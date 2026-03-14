@@ -101,17 +101,24 @@ function reducer(state, action) {
 
 // ──────────────────────────────── Hook ───────────────────────────────
 
-export function useShop(strategy) {
+export function useShop(strategy, forceMock = false) {
   const [state, dispatch] = useReducer(reducer, initialState)
   const rushCleanupRef = useRef(null)
   const stateRef = useRef(state)
   stateRef.current = state
 
-  // Initialize: try live API, fall back to mock
+  // Initialize: skip live API when forceMock, otherwise try live and fall back to mock
   useEffect(() => {
     let cancelled = false
 
     async function init() {
+      if (forceMock) {
+        if (strategy) {
+          const mock = buildMockShopState(strategy)
+          if (!cancelled) dispatch({ type: 'INIT', payload: { shopState: mock, mockMode: true } })
+        }
+        return
+      }
       try {
         const data = await fetchShopState()
         if (!cancelled) {
@@ -127,7 +134,7 @@ export function useShop(strategy) {
 
     init()
     return () => { cancelled = true }
-  }, [strategy])
+  }, [strategy, forceMock])
 
   const sendMessage = useCallback(async (text) => {
     const cur = stateRef.current

@@ -8,8 +8,8 @@ export default function App() {
   const [appPage, setAppPage] = useState('research') // 'research' | 'launching' | 'shop'
   const [businessData, setBusinessData] = useState(null)
 
-  const handleLaunch = (strategy, stats) => {
-    setBusinessData({ strategy, stats })
+  const handleLaunch = (strategy, stats, mockMode) => {
+    setBusinessData({ strategy, stats, mockMode })
     setAppPage('launching')
   }
 
@@ -52,7 +52,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, type: 'spring', bounce: 0.2 }}
           >
-            <ShopPage strategy={businessData?.strategy} stats={businessData?.stats} />
+            <ShopPage strategy={businessData?.strategy} stats={businessData?.stats} forceMock={businessData?.mockMode} />
           </motion.div>
         )}
       </AnimatePresence>
