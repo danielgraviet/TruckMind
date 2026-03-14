@@ -12,7 +12,7 @@
 
 Build `backend/server.py` — the FastAPI app that exposes two interfaces:
 
-1. **SSE endpoint** (`GET /api/stream`) — streams pipeline progress (phases 1-3) to the frontend in real time
+1. **SSE endpoint** (`GET /api/stream/{pipeline_id}`) — streams pipeline progress (phases 1-3) to the frontend in real time
 2. **Shop endpoint** (`POST /api/order`) — handles customer orders during phase 4 and returns updated shop state
 
 This is the bridge between all the agent code and the React frontend. Without this, the frontend has nothing to render.
@@ -21,7 +21,9 @@ This is the bridge between all the agent code and the React frontend. Without th
 
 ### SSE pipeline endpoint
 
-- [ ] Create `POST /api/pipeline` that accepts `{ concept, location, budget? }`, starts the pipeline in a background task, returns `{ pipeline_id }`
+Note: For this hackathon we run the pipeline lazily inside the SSE generator. `/api/pipeline` just registers inputs; the work starts when the client connects to `/api/stream/{pipeline_id}` so events are not missed and we avoid double-runs.
+
+- [ ] Create `POST /api/pipeline` that accepts `{ concept, location, budget?, mock? }`, stores inputs, and returns `{ pipeline_id }` (the pipeline executes when the SSE stream is opened)
 - [ ] Create `GET /api/stream/{pipeline_id}` that returns a `StreamingResponse` with `media_type="text/event-stream"`
 - [ ] Emit these SSE events as the pipeline runs:
   ```
@@ -35,14 +37,14 @@ This is the bridge between all the agent code and the React frontend. Without th
   data: {"phase": "personas", "status": "running"}
 
   event: personas
-  data: {"count": 200, "sample": [first 10 personas as dicts]}
+  data: {"count": 100, "sample": [first 10 personas as dicts]}  # count matches default target
 
   event: phase
   data: {"phase": "simulation", "status": "running"}
 
   event: reaction
   data: { ...reaction.to_dict() }
-  (one per persona — 200 total)
+  (one per persona — 100 total by default)
 
   event: simulation_complete
   data: { ...simulation_result summary stats }
