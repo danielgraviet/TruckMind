@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import CityPicker from './CityPicker.jsx'
 
 export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock, buttonLabel = 'Run Analysis' }) {
   const [concept, setConcept]   = useState('')
@@ -30,20 +31,11 @@ export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock,
           />
         </div>
 
-        <div>
-          <label className="block text-xs text-gray-500 mb-1.5" htmlFor="location">
-            Location
-          </label>
-          <input
-            id="location"
-            type="text"
-            value={location}
-            onChange={e => setLocation(e.target.value)}
-            placeholder="City, State"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500"
-            disabled={isRunning}
-          />
-        </div>
+        <CityPicker
+          value={location}
+          onChange={setLocation}
+          disabled={isRunning}
+        />
 
         <div className="flex items-center justify-between pt-1">
           {/* Demo mode toggle */}
@@ -60,7 +52,7 @@ export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock,
 
           <button
             type="submit"
-            disabled={!concept.trim() || isRunning}
+            disabled={!concept.trim() || !location || isRunning}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             {isRunning ? 'Running…' : buttonLabel}

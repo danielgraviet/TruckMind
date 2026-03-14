@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSimulation } from '../hooks/useSimulation.js'
 import ConceptInput    from '../components/pipeline/ConceptInput.jsx'
 import StrategyCard, { StrategyTestCard, WinnerCard } from '../components/pipeline/StrategyCard.jsx'
@@ -6,6 +6,8 @@ import ReactionBoard   from '../components/pipeline/ReactionBoard.jsx'
 import SimulationStats from '../components/pipeline/SimulationStats.jsx'
 import PhaseIndicator  from '../components/shared/PhaseIndicator.jsx'
 import { motion, AnimatePresence } from 'framer-motion'
+
+const LAUNCH_DELAY = 20 // seconds to review before auto-launch
 
 function EvaluatingBanner() {
   return (
@@ -18,6 +20,59 @@ function EvaluatingBanner() {
       <div>
         <div className="text-sm font-semibold text-white">Evaluating strategies…</div>
         <div className="text-xs text-gray-500 mt-0.5">Scoring all 3 by interest rate, revenue, sentiment & margin</div>
+      </div>
+    </motion.div>
+  )
+}
+
+function LaunchCountdown({ seconds, paused, total, onLaunch, onPause, onResume }) {
+  const pct = (seconds / total) * 100
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.4 }}
+      className="bg-gray-900 border border-gray-800 rounded-xl p-4"
+    >
+      {/* Progress bar */}
+      <div className="h-1 bg-gray-800 rounded-full mb-3 overflow-hidden">
+        <motion.div
+          className="h-full bg-indigo-500 rounded-full origin-left"
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.9, ease: 'linear' }}
+        />
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-400">
+          {paused
+            ? 'Auto-launch paused — review as long as you need.'
+            : <span>Launching in <span className="text-white font-semibold tabular-nums">{seconds}s</span>…</span>
+          }
+        </p>
+        <div className="flex items-center gap-2">
+          {paused ? (
+            <button
+              onClick={onResume}
+              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+            >
+              Resume countdown
+            </button>
+          ) : (
+            <button
+              onClick={onPause}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Keep reviewing
+            </button>
+          )}
+          <button
+            onClick={onLaunch}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+          >
+            Launch now →
+          </button>
+        </div>
       </div>
     </motion.div>
   )
@@ -36,12 +91,34 @@ export default function PipelinePage({ onLaunch }) {
   const isEval      = phase === 'evaluating'
   const isComplete  = phase === 'complete'
 
-  // Auto-launch 2.5s after evaluation completes — no human click needed
+  // Countdown state
+  const [countdown, setCountdown] = useState(LAUNCH_DELAY)
+  const [paused, setPaused] = useState(false)
+  const intervalRef = useRef(null)
+
   useEffect(() => {
-    if (!isComplete || !onLaunch || !strategy || !stats) return
-    const id = setTimeout(() => onLaunch(strategy, stats), 2500)
-    return () => clearTimeout(id)
-  }, [isComplete, strategy, stats, onLaunch])
+    if (!isComplete) return
+    setCountdown(LAUNCH_DELAY)
+    setPaused(false)
+  }, [isComplete])
+
+  useEffect(() => {
+    if (!isComplete || paused) {
+      clearInterval(intervalRef.current)
+      return
+    }
+    intervalRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(intervalRef.current)
+          onLaunch?.(strategy, stats, mockMode)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(intervalRef.current)
+  }, [isComplete, paused, strategy, stats, mockMode, onLaunch])
   const hasOptions  = strategyOptions.length > 0
   const showStrip   = hasOptions && (isTesting || isEval || isComplete || phase === 'simulation')
 
@@ -77,7 +154,7 @@ export default function PipelinePage({ onLaunch }) {
               <button onClick={stop} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
                 Stop
               </button>
-            ) : !isComplete && (
+            ) : (
               <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
                 ← New concept
               </button>
@@ -134,16 +211,16 @@ export default function PipelinePage({ onLaunch }) {
             </div>
           )}
 
-          {/* Auto-launching indicator */}
+          {/* Launch countdown */}
           {isComplete && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="flex justify-center pb-8"
-            >
-              <p className="text-sm text-gray-500 animate-pulse">Launching business…</p>
-            </motion.div>
+            <LaunchCountdown
+              seconds={countdown}
+              paused={paused}
+              total={LAUNCH_DELAY}
+              onLaunch={() => onLaunch?.(strategy, stats, mockMode)}
+              onPause={() => setPaused(true)}
+              onResume={() => setPaused(false)}
+            />
           )}
         </>
       )}
