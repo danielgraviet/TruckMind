@@ -242,6 +242,15 @@ _MOCK_STRATEGY = {
             "prep_time_minutes": 1,
             "tags": ["vegetarian"],
         },
+        {
+            "name": "Churro Bites",
+            "description": "Crispy cinnamon-sugar churro pieces with chocolate dipping sauce",
+            "category": "dessert",
+            "base_price": 3.50,
+            "cost_to_make": 0.75,
+            "prep_time_minutes": 2,
+            "tags": ["vegetarian"],
+        },
     ],
     "target_demographic_summary": (
         "BYU students and young professionals aged 18-35, price-conscious but quality-seeking. "
@@ -558,7 +567,7 @@ class MockLLMClient:
         if "cashier" in s:
             return self._mock_cashier(prompt, system)
         if "operations manager" in s:
-            return self._mock_autonomous_decision()
+            return self._mock_autonomous_decision(prompt)
         return None
 
     def _dispatch_json_list(self, prompt: str, system: str) -> list:
@@ -613,17 +622,57 @@ class MockLLMClient:
 
     # ── Autonomous decision mock ────────────────────────────────────────────
 
-    def _mock_autonomous_decision(self) -> dict:
-        return {
-            "action_type": "restock",
-            "description": "Restocking item to maintain service capacity through the lunch rush.",
-            "details": {
-                "item_name": "Classic Street Taco",
-                "new_price": 0.0,
-                "quantity": 20,
-                "reason": "Inventory is below threshold; restocking is cost-effective given current cash on hand.",
-            },
-        }
+    def _mock_autonomous_decision(self, prompt: str) -> dict:
+        prompt_lower = prompt.lower()
+
+        if "running low" in prompt_lower or "remaining" in prompt_lower:
+            item_match = re.search(r"'([^']+)' is running low", prompt)
+            item_name = item_match.group(1) if item_match else "Classic Street Taco"
+            return {
+                "action_type": "restock",
+                "description": f"Restocking {item_name} — inventory below threshold, cost-effective given current cash reserves.",
+                "details": {
+                    "item_name": item_name,
+                    "new_price": 0.0,
+                    "quantity": 15,
+                    "reason": f"{item_name} inventory is below threshold; restocking to maintain service capacity.",
+                },
+            }
+        elif "surge" in prompt_lower or "ordered" in prompt_lower:
+            item_match = re.search(r"'([^']+)'", prompt)
+            item_name = item_match.group(1) if item_match else "Classic Street Taco"
+            return {
+                "action_type": "adjust_price",
+                "description": f"Surge pricing {item_name} — high demand detected, increasing price by 15%.",
+                "details": {
+                    "item_name": item_name,
+                    "new_price": 0.0,
+                    "quantity": 0,
+                    "reason": f"{item_name} is trending; modest price increase to capture demand.",
+                },
+            }
+        elif "cash" in prompt_lower:
+            return {
+                "action_type": "remove_item",
+                "description": "Cash critically low — removing underperforming menu item to reduce costs.",
+                "details": {
+                    "item_name": "Chips & Salsa",
+                    "new_price": 0.0,
+                    "quantity": 0,
+                    "reason": "Cash reserves below minimum; cutting lowest-margin item to stabilize finances.",
+                },
+            }
+        else:
+            return {
+                "action_type": "restock",
+                "description": "Restocking item to maintain service capacity through the lunch rush.",
+                "details": {
+                    "item_name": "Classic Street Taco",
+                    "new_price": 0.0,
+                    "quantity": 20,
+                    "reason": "Inventory is below threshold; restocking is cost-effective given current cash on hand.",
+                },
+            }
 
     # ── Simulation batch mock ───────────────────────────────────────────────
     # Parses persona IDs from the batch prompt so the ScoringModel lookup

@@ -393,6 +393,7 @@ class ShopState:
     total_revenue: float = 0.0
     total_orders: int = 0
     cash_on_hand: float = 500.0         # starting cash
+    trigger_cooldowns: dict[str, int] = field(default_factory=dict)  # "trigger:item" → order count at last fire
 
     def get_active_menu(self) -> list[MenuItem]:
         """Menu items currently available (in stock + not removed)."""

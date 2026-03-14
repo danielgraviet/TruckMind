@@ -1,16 +1,21 @@
 """
-Agent: The Shop (Live Operations)
-=================================
-Input:  (ShopState, customer_message) or (ShopState, trigger_event)
-Output: (response_message, list[ShopAction], updated ShopState)
+Agent: The Shop (Autonomous Operations Engine)
+===============================================
+Input:  (ShopState, Order) or (ShopState, trigger_event)
+Output: list[ShopAction] + mutated ShopState
 
-This is where the AI actually runs the business.
-Two modes:
-1. CUSTOMER-FACING: Chat interface that takes orders
-2. AUTONOMOUS: Background decisions (pricing, inventory, menu changes)
+The shop agent is an autonomous operations manager connected to the truck's
+POS, inventory, and accounting systems. It monitors incoming orders, tracks
+inventory and financials, and makes real-time operational decisions (pricing,
+restocking, menu changes) within hard constraints it cannot override.
+
+Trigger model: Periodic (every N orders) + event-driven (after each order, on stock-outs).
+Authority: Fully autonomous with hardcoded rules it cannot break.
+No cashier mode — real food trucks have human cashiers.
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Optional
 from models.schema import (
@@ -21,162 +26,55 @@ from utils.llm_client import LLMClient
 import uuid
 
 
-# ─── Customer-facing chat ────────────────────────────────────────────────────
+# ─── Hard Rules (non-negotiable) ─────────────────────────────────────────────
+MAX_MARKUP_PCT = 0.25          # Max 25% above base price
+MIN_MARGIN_MULTIPLIER = 1.10   # Never price below cost_to_make × 1.10
+MAX_RESTOCK_SPEND_PCT = 0.50   # Can't spend more than 50% of cash on one restock
+MIN_CASH_RESERVE = 50.0        # Must keep $50 minimum cash on hand
+MAX_ACTIONS_PER_CYCLE = 2      # Max autonomous actions per evaluation (sold-out exempt)
+COOLDOWN_ORDERS = 8            # Min orders between same trigger firing per item
+PERIODIC_REVIEW_INTERVAL = 5   # Full strategic review every N orders
+MIN_ORDERS_FOR_TRENDS = 8      # Don't make trend-based decisions until N orders exist
 
-CASHIER_SYSTEM_PROMPT = """You are the AI cashier for {business_name}, a food truck.
-Your personality: friendly, efficient, and enthusiastic about the food.
-You speak naturally — not robotic, not overly formal.
-
-CURRENT MENU (only offer items on this list):
-{active_menu}
-
-RULES:
-- Only take orders for items currently on the menu
-- If something is sold out, apologize and suggest an alternative
-- Confirm the order and total before completing
-- If a customer asks for modifications, be accommodating but note them
-- You can upsell (suggest drinks, sides) but don't be pushy
-- If asked about ingredients/allergens, provide helpful info based on the menu tags
-- Keep responses concise — this is a food truck, not a sit-down restaurant
-
-Respond in JSON:
-{{
-    "message": "Your response to the customer",
-    "action": "none|take_order|suggest_alternative",
-    "order_items": ["item names if taking order"],
-    "total": 0.00
-}}"""
-
-CASHIER_PROMPT_TEMPLATE = """Customer says: "{customer_message}"
-
-Current shop status:
-- Orders today: {total_orders}
-- Revenue today: ${total_revenue:.2f}
-- Low stock items: {low_stock}
-- Sold out items: {sold_out}
-"""
+# ─── Inventory defaults by category ─────────────────────────────────────────
+_CATEGORY_INVENTORY = {
+    "entree":  {"qty": 10, "threshold": 4, "max": 50},
+    "side":    {"qty": 8,  "threshold": 3, "max": 30},
+    "drink":   {"qty": 15, "threshold": 4, "max": 50},
+    "dessert": {"qty": 6,  "threshold": 3, "max": 25},
+}
+_DEFAULT_INVENTORY = {"qty": 10, "threshold": 4, "max": 50}
 
 
-def handle_customer(
-    shop_state: ShopState,
-    customer_message: str,
-    client: LLMClient,
-    customer_name: str = "Customer",
-) -> tuple[str, list[ShopAction]]:
-    """
-    Process a customer message and return a response + any actions taken.
-    
-    Returns:
-        (response_text, list_of_actions)
-    """
-    # Build context
-    active_menu = shop_state.active_menu_display()
-    low_stock = [i.menu_item_name for i in shop_state.inventory if i.is_low and not i.is_out]
-    sold_out = [i.menu_item_name for i in shop_state.inventory if i.is_out]
-    sold_out += shop_state.removed_items
+# ─── Autonomous operations prompts ──────────────────────────────────────────
 
-    system = CASHIER_SYSTEM_PROMPT.format(
-        business_name=shop_state.strategy.business_name,
-        active_menu=active_menu,
-    )
+AUTONOMOUS_SYSTEM_PROMPT = """You are the autonomous operations manager for {business_name}.
+You monitor sales, inventory, and finances in real-time.
+You make decisive operational decisions: pricing adjustments, restocking, menu changes.
 
-    prompt = CASHIER_PROMPT_TEMPLATE.format(
-        customer_message=customer_message,
-        total_orders=shop_state.total_orders,
-        total_revenue=shop_state.total_revenue,
-        low_stock=", ".join(low_stock) if low_stock else "none",
-        sold_out=", ".join(sold_out) if sold_out else "none",
-    )
+Every recommendation must include specific numbers: order counts, percentages, dollar amounts, margins.
+Format: [Decision] — [Evidence with numbers] ([Projected impact])
 
-    response = client.complete_json(
-        prompt=prompt,
-        system=system,
-        max_tokens=1024,
-        temperature=0.7,
-    )
+Be concise. One decision per issue. No hedging."""
 
-    actions = []
-    message = customer_message  # fallback
+CASHIER_SYSTEM_PROMPT = """You are the friendly cashier at {business_name}. Help customers and take their orders.
 
-    if response.parsed_json:
-        data = response.parsed_json
-        message = data.get("message", "Sorry, let me try that again.")
-
-        if data.get("action") == "take_order" and data.get("order_items"):
-            order_items = data["order_items"]
-            total = float(data.get("total", 0))
-
-            # Validate items exist and are available
-            active_names = {i.name for i in shop_state.get_active_menu()}
-            valid_items = [item for item in order_items if item in active_names]
-
-            if valid_items:
-                # Calculate total from current prices if LLM got it wrong
-                calculated_total = sum(
-                    shop_state.get_current_price(item) or 0 for item in valid_items
-                )
-                total = calculated_total  # trust our math over LLM's
-
-                # Create order
-                order = Order(
-                    id=f"ORD-{uuid.uuid4().hex[:6].upper()}",
-                    timestamp=datetime.now().isoformat(),
-                    customer_name=customer_name,
-                    items=valid_items,
-                    total_price=total,
-                    status="preparing",
-                )
-
-                # Update state
-                shop_state.orders.append(order)
-                shop_state.total_orders += 1
-                shop_state.total_revenue += total
-                shop_state.cash_on_hand += total
-
-                # Decrement inventory
-                for item_name in valid_items:
-                    _decrement_inventory(shop_state, item_name)
-
-                actions.append(ShopAction(
-                    action_type=ShopActionType.TAKE_ORDER,
-                    description=f"Order {order.id}: {', '.join(valid_items)} — ${total:.2f}",
-                    details=order.to_dict(),
-                    autonomous=False,  # Customer-initiated
-                ))
-
-                # Check if this order triggered any inventory thresholds
-                auto_actions = check_autonomous_triggers(shop_state, client)
-                actions.extend(auto_actions)
-
-    return message, actions
-
-
-# ─── Autonomous operations ───────────────────────────────────────────────────
-
-AUTONOMOUS_SYSTEM_PROMPT = """You are the AI operations manager for {business_name}, a food truck.
-You make autonomous decisions about pricing, inventory, and menu availability.
-
-You think like a smart business operator:
-- If an item is selling fast, you might raise the price slightly (surge pricing)
-- If an item isn't moving, you might discount it or remove it
-- If inventory is low, you decide whether to restock (costs money) or let it sell out
-- You consider cash on hand when making restock decisions
-- You're always optimizing for profit while keeping customers happy
-
-Be decisive. Make ONE clear recommendation per issue."""
+MENU:
+{menu}"""
 
 AUTONOMOUS_PROMPT_TEMPLATE = """Current shop status:
 
 INVENTORY:
 {inventory_status}
 
-SALES DATA:
-- Total orders: {total_orders}
+PER-ITEM SALES BREAKDOWN:
+{sales_breakdown}
+
+FINANCIAL SUMMARY:
 - Total revenue: ${total_revenue:.2f}
 - Cash on hand: ${cash_on_hand:.2f}
-
-RECENT ORDERS (last 10):
-{recent_orders}
+- Total orders: {total_orders}
+- Average order value: ${avg_order_value:.2f}
 
 CURRENT PRICE ADJUSTMENTS:
 {price_adjustments}
@@ -187,7 +85,7 @@ ISSUE TO ADDRESS:
 What action should we take? Respond in JSON:
 {{
     "action_type": "adjust_price|remove_item|restock|add_special",
-    "description": "Human-readable explanation of your decision",
+    "description": "Human-readable explanation with specific numbers",
     "details": {{
         "item_name": "affected item",
         "new_price": 0.00,
@@ -197,35 +95,168 @@ What action should we take? Respond in JSON:
 }}"""
 
 
-def check_autonomous_triggers(
-    shop_state: ShopState,
-    client: LLMClient,
-) -> list[ShopAction]:
+# ─── Public Interface ───────────────────────────────────────────────────────
+
+def process_order(shop_state: ShopState, order: Order, client: LLMClient) -> list[ShopAction]:
     """
-    Check for conditions that should trigger autonomous decisions.
-    Called after every order and periodically.
+    Process an incoming order from the POS system.
+    Updates state and evaluates triggers.
+
+    Args:
+        shop_state: Current shop state
+        order: Order from POS (items already selected by human cashier)
+        client: LLM client for autonomous decisions
+
+    Returns:
+        List of autonomous actions taken in response to this order
     """
     actions = []
 
-    # Trigger 1: Low inventory
-    for inv in shop_state.inventory:
-        if inv.is_low and not inv.is_out and inv.menu_item_name not in shop_state.removed_items:
-            action = _make_autonomous_decision(
-                shop_state, client,
-                trigger=f"'{inv.menu_item_name}' is running low ({inv.quantity_remaining} remaining, threshold is {inv.restock_threshold}). "
-                        f"Restocking would cost ${inv.unit_cost * (inv.max_capacity - inv.quantity_remaining):.2f}. "
-                        f"We have ${shop_state.cash_on_hand:.2f} cash on hand."
-            )
-            if action:
-                _apply_action(shop_state, action)
-                actions.append(action)
+    # 1. Validate: filter to only items on active menu
+    active_names = {i.name for i in shop_state.get_active_menu()}
+    valid_items = [item for item in order.items if item in active_names]
+    if not valid_items:
+        return actions
+    order.items = valid_items
 
-    # Trigger 2: Out of stock
+    # 2. Recalculate total from current prices (don't trust external total)
+    order.total_price = sum(
+        shop_state.get_current_price(item) or 0 for item in valid_items
+    )
+
+    # 3. Update state
+    shop_state.orders.append(order)
+    shop_state.total_orders += 1
+    shop_state.total_revenue += order.total_price
+    shop_state.cash_on_hand += order.total_price
+
+    # Decrement inventory
+    for item_name in valid_items:
+        _decrement_inventory(shop_state, item_name)
+
+    # 4. Log order action (non-autonomous)
+    actions.append(ShopAction(
+        action_type=ShopActionType.TAKE_ORDER,
+        description=f"Order {order.id}: {', '.join(valid_items)} — ${order.total_price:.2f}",
+        details=order.to_dict(),
+        autonomous=False,
+    ))
+
+    # 5. Evaluate fast triggers (sold-out, low stock)
+    fast_actions = _evaluate_fast_triggers(shop_state, client)
+    actions.extend(fast_actions)
+
+    # 6. Periodic review every N orders
+    if shop_state.total_orders % PERIODIC_REVIEW_INTERVAL == 0:
+        review_actions = periodic_review(shop_state, client)
+        actions.extend(review_actions)
+
+    return actions
+
+
+def periodic_review(shop_state: ShopState, client: LLMClient) -> list[ShopAction]:
+    """
+    Full strategic evaluation. Called on timer or every N orders.
+
+    Evaluates all triggers (pricing, inventory, financial) and makes
+    strategic decisions via LLM.
+
+    Returns:
+        List of actions taken
+    """
+    return _periodic_review(shop_state, client)
+
+
+def handle_customer(
+    shop_state: ShopState,
+    message: str,
+    client: LLMClient,
+    customer_name: str = "Customer",
+) -> tuple[str, list[ShopAction]]:
+    """
+    Handle a customer message (order or question) through the cashier LLM.
+
+    Builds a cashier prompt with the live menu, sends to the LLM, and if the
+    customer is ordering, creates an Order and runs it through process_order().
+
+    Returns:
+        (cashier_message, list_of_actions) where actions include the order
+        itself plus any autonomous actions triggered by processing it.
+    """
+    system = CASHIER_SYSTEM_PROMPT.format(
+        business_name=shop_state.strategy.business_name,
+        menu=shop_state.active_menu_display(),
+    )
+
+    prompt = f'Customer says: "{message}"'
+
+    response = client.complete_json(
+        prompt=prompt,
+        system=system,
+        max_tokens=512,
+        temperature=0.7,
+    )
+
+    if not response.parsed_json:
+        return ("Sorry, I didn't catch that. What can I get for you?", [])
+
+    data = response.parsed_json
+    cashier_msg = data.get("message", "What can I get for you?")
+    action = data.get("action", "none")
+    actions: list[ShopAction] = []
+
+    if action == ShopActionType.TAKE_ORDER.value:
+        order_items = data.get("order_items", [])
+        if order_items:
+            order = Order(
+                id=uuid.uuid4().hex[:8],
+                timestamp=datetime.now().isoformat(),
+                customer_name=customer_name,
+                items=order_items,
+                total_price=0.0,
+            )
+            actions = process_order(shop_state, order, client)
+
+    return (cashier_msg, actions)
+
+
+def initialize_shop(strategy: Strategy, starting_cash: float = 500.0) -> ShopState:
+    """Create initial shop state from a finalized strategy with staggered inventory."""
+    inventory = []
+    for item in strategy.menu:
+        cat = item.category.lower()
+        defaults = _CATEGORY_INVENTORY.get(cat, _DEFAULT_INVENTORY)
+        inventory.append(InventoryItem(
+            menu_item_name=item.name,
+            quantity_remaining=defaults["qty"],
+            restock_threshold=defaults["threshold"],
+            max_capacity=defaults["max"],
+            unit_cost=item.cost_to_make,
+        ))
+
+    return ShopState(
+        strategy=strategy,
+        inventory=inventory,
+        cash_on_hand=starting_cash,
+    )
+
+
+# ─── Trigger Engine ─────────────────────────────────────────────────────────
+
+def _evaluate_fast_triggers(shop_state: ShopState, client: LLMClient) -> list[ShopAction]:
+    """
+    Called after every order. Only checks urgent triggers:
+    1. Sold Out — auto-remove (exempt from action cap)
+    2. Low Stock — LLM decides restock or ride it out
+    """
+    actions = []
+
+    # Trigger 1: Sold Out — immediate auto-removal, exempt from cap
     for inv in shop_state.inventory:
         if inv.is_out and inv.menu_item_name not in shop_state.removed_items:
             action = ShopAction(
                 action_type=ShopActionType.REMOVE_ITEM,
-                description=f"Removed '{inv.menu_item_name}' from menu — sold out.",
+                description=f"SOLD OUT: '{inv.menu_item_name}' removed from menu — 0 units remaining.",
                 details={"item_name": inv.menu_item_name, "reason": "out of stock"},
                 autonomous=True,
             )
@@ -233,27 +264,243 @@ def check_autonomous_triggers(
             shop_state.action_log.append(action)
             actions.append(action)
 
-    # Trigger 3: Surge pricing (if an item has been ordered a lot recently)
-    recent_items = {}
-    for order in shop_state.orders[-20:]:  # last 20 orders
-        for item in order.items:
-            recent_items[item] = recent_items.get(item, 0) + 1
+    # Trigger 2: Low Stock — cooldown per item
+    for inv in shop_state.inventory:
+        if inv.is_low and not inv.is_out and inv.menu_item_name not in shop_state.removed_items:
+            key = f"low_stock:{inv.menu_item_name}"
+            if not _can_trigger(shop_state, key, COOLDOWN_ORDERS):
+                continue
 
-    for item_name, count in recent_items.items():
-        if count >= 8 and item_name not in shop_state.current_prices:
-            # Item is hot — consider a price bump
+            restock_cost = inv.unit_cost * (inv.max_capacity - inv.quantity_remaining)
             action = _make_autonomous_decision(
                 shop_state, client,
-                trigger=f"'{item_name}' has been ordered {count} times in the last 20 orders. "
-                        f"Current price: ${shop_state.get_current_price(item_name):.2f}. "
-                        f"Consider a surge price increase."
+                trigger=f"'{inv.menu_item_name}' is running low ({inv.quantity_remaining} remaining, "
+                        f"threshold is {inv.restock_threshold}). "
+                        f"Full restock would cost ${restock_cost:.2f}. "
+                        f"We have ${shop_state.cash_on_hand:.2f} cash on hand."
             )
             if action:
                 _apply_action(shop_state, action)
                 actions.append(action)
+                _mark_triggered(shop_state, key)
 
     return actions
 
+
+def _periodic_review(shop_state: ShopState, client: LLMClient) -> list[ShopAction]:
+    """
+    Called every N orders. Evaluates strategic triggers.
+    Action cap: Max 1 inventory action + 1 pricing action per review. Sold-out exempt.
+    """
+    actions = []
+    inventory_actions = 0
+    pricing_actions = 0
+
+    # Trigger 3: Surge Pricing
+    # Item ordered 5+ times in last 15 orders, no existing override above base
+    if shop_state.total_orders >= MIN_ORDERS_FOR_TRENDS:
+        for item in shop_state.strategy.menu:
+            if item.name in shop_state.removed_items:
+                continue
+            if pricing_actions >= 1:
+                break
+
+            recent_count = _count_item_in_recent_orders(shop_state, item.name, 15)
+            if recent_count < 5:
+                continue
+
+            # Skip if already has price override above base
+            current = shop_state.get_current_price(item.name)
+            if current and current > item.base_price:
+                continue
+
+            key = f"surge:{item.name}"
+            if not _can_trigger(shop_state, key, COOLDOWN_ORDERS):
+                continue
+
+            # Rule-based surge: 15% increase, capped at MAX_MARKUP_PCT
+            new_price = round(item.base_price * 1.15, 2)
+            price_ceiling = round(item.base_price * (1 + MAX_MARKUP_PCT), 2)
+            new_price = min(new_price, price_ceiling)
+
+            action = ShopAction(
+                action_type=ShopActionType.ADJUST_PRICE,
+                description=(
+                    f"SURGE: '{item.name}' ordered {recent_count}x in last 15 orders — "
+                    f"price ${item.base_price:.2f} → ${new_price:.2f} (+{((new_price/item.base_price)-1)*100:.0f}%)"
+                ),
+                details={
+                    "item_name": item.name,
+                    "new_price": new_price,
+                    "reason": f"High demand ({recent_count} in last 15 orders)",
+                },
+                autonomous=True,
+            )
+            _apply_action(shop_state, action)
+            actions.append(action)
+            _mark_triggered(shop_state, key)
+            pricing_actions += 1
+
+    # Trigger 4: Slow Mover Discount
+    # 0 orders in last 10, only if enough data
+    if shop_state.total_orders >= MIN_ORDERS_FOR_TRENDS:
+        slow_movers = _get_items_not_ordered_recently(shop_state, 10)
+        for item_name in slow_movers:
+            if pricing_actions >= 1:
+                break
+
+            key = f"slow_mover:{item_name}"
+            if not _can_trigger(shop_state, key, COOLDOWN_ORDERS):
+                continue
+
+            menu_item = _get_menu_item(shop_state, item_name)
+            if not menu_item:
+                continue
+
+            # Rule-based discount: 20%, floor at cost * MIN_MARGIN_MULTIPLIER
+            base = menu_item.base_price
+            floor_price = round(menu_item.cost_to_make * MIN_MARGIN_MULTIPLIER, 2)
+            new_price = round(base * 0.80, 2)
+            new_price = max(new_price, floor_price)
+
+            if new_price >= base:
+                continue  # Can't discount further
+
+            action = ShopAction(
+                action_type=ShopActionType.ADJUST_PRICE,
+                description=(
+                    f"DISCOUNT: '{item_name}' has 0 orders in last 10 — "
+                    f"price ${base:.2f} → ${new_price:.2f} (-{((1 - new_price/base))*100:.0f}%)"
+                ),
+                details={
+                    "item_name": item_name,
+                    "new_price": new_price,
+                    "reason": "No orders in last 10 — discounting to stimulate demand",
+                },
+                autonomous=True,
+            )
+            _apply_action(shop_state, action)
+            actions.append(action)
+            _mark_triggered(shop_state, key)
+            pricing_actions += 1
+
+    # Trigger 5: Bestseller Milestone
+    # Item total orders >= 5, once per item (permanent cooldown)
+    for item in shop_state.strategy.menu:
+        if item.name in shop_state.removed_items:
+            continue
+
+        total = _get_total_item_orders(shop_state, item.name)
+        if total < 5:
+            continue
+
+        key = f"bestseller:{item.name}"
+        # Permanent cooldown: check if ever triggered
+        if key in shop_state.trigger_cooldowns:
+            continue
+
+        # Small 5-10% price nudge
+        base = item.base_price
+        current = shop_state.get_current_price(item.name) or base
+        nudge_price = round(current * 1.07, 2)
+        price_ceiling = round(base * (1 + MAX_MARKUP_PCT), 2)
+        nudge_price = min(nudge_price, price_ceiling)
+
+        action = ShopAction(
+            action_type=ShopActionType.ADD_SPECIAL,
+            description=(
+                f"BESTSELLER: '{item.name}' hit {total} total orders! "
+                f"Price nudge ${current:.2f} → ${nudge_price:.2f} (+7%)"
+            ),
+            details={
+                "item_name": item.name,
+                "new_price": nudge_price,
+                "total_orders": total,
+                "reason": f"Bestseller milestone — {total} orders",
+            },
+            autonomous=True,
+        )
+        # Apply the price nudge via current_prices
+        shop_state.current_prices[item.name] = nudge_price
+        shop_state.action_log.append(action)
+        actions.append(action)
+        _mark_triggered(shop_state, key)
+
+    # Trigger 6: Cash Crisis
+    if shop_state.cash_on_hand < MIN_CASH_RESERVE:
+        key = "cash_crisis"
+        if _can_trigger(shop_state, key, 15):
+            action = _make_autonomous_decision(
+                shop_state, client,
+                trigger=f"CASH CRISIS: Only ${shop_state.cash_on_hand:.2f} on hand "
+                        f"(minimum reserve is ${MIN_CASH_RESERVE:.2f}). "
+                        f"Total revenue: ${shop_state.total_revenue:.2f}, "
+                        f"total orders: {shop_state.total_orders}. "
+                        f"Consider cutting an underperformer or raising prices."
+            )
+            if action:
+                _apply_action(shop_state, action)
+                actions.append(action)
+                _mark_triggered(shop_state, key)
+
+    return actions
+
+
+# ─── Cooldown Helpers ────────────────────────────────────────────────────────
+
+def _can_trigger(shop_state: ShopState, key: str, cooldown: int) -> bool:
+    """Check if enough orders have passed since this trigger last fired."""
+    last_fired = shop_state.trigger_cooldowns.get(key)
+    if last_fired is None:
+        return True
+    return (shop_state.total_orders - last_fired) >= cooldown
+
+
+def _mark_triggered(shop_state: ShopState, key: str):
+    """Record that this trigger fired at the current order count."""
+    shop_state.trigger_cooldowns[key] = shop_state.total_orders
+
+
+# ─── Data Helpers ────────────────────────────────────────────────────────────
+
+def _count_item_in_recent_orders(shop_state: ShopState, item_name: str, last_n: int) -> int:
+    """Count how many times an item appears in the last N orders."""
+    count = 0
+    for order in shop_state.orders[-last_n:]:
+        count += order.items.count(item_name)
+    return count
+
+
+def _get_items_not_ordered_recently(shop_state: ShopState, last_n: int) -> list[str]:
+    """Get menu items with 0 orders in the last N orders."""
+    recent_items = set()
+    for order in shop_state.orders[-last_n:]:
+        recent_items.update(order.items)
+
+    slow = []
+    for item in shop_state.strategy.menu:
+        if item.name not in recent_items and item.name not in shop_state.removed_items:
+            slow.append(item.name)
+    return slow
+
+
+def _get_total_item_orders(shop_state: ShopState, item_name: str) -> int:
+    """Get lifetime order count for an item."""
+    count = 0
+    for order in shop_state.orders:
+        count += order.items.count(item_name)
+    return count
+
+
+def _get_menu_item(shop_state: ShopState, item_name: str) -> Optional[MenuItem]:
+    """Look up a MenuItem by name."""
+    for item in shop_state.strategy.menu:
+        if item.name == item_name:
+            return item
+    return None
+
+
+# ─── LLM Decision Making ────────────────────────────────────────────────────
 
 def _make_autonomous_decision(
     shop_state: ShopState,
@@ -265,19 +512,32 @@ def _make_autonomous_decision(
     inv_lines = []
     for inv in shop_state.inventory:
         status = "OUT" if inv.is_out else ("LOW" if inv.is_low else "OK")
-        inv_lines.append(f"  {inv.menu_item_name}: {inv.quantity_remaining}/{inv.max_capacity} [{status}] (restock cost: ${inv.unit_cost:.2f}/unit)")
+        inv_lines.append(
+            f"  {inv.menu_item_name}: {inv.quantity_remaining}/{inv.max_capacity} "
+            f"[{status}] (cost: ${inv.unit_cost:.2f}/unit, threshold: {inv.restock_threshold})"
+        )
 
-    # Format recent orders
-    order_lines = []
-    for order in shop_state.orders[-10:]:
-        order_lines.append(f"  {order.id}: {', '.join(order.items)} — ${order.total_price:.2f}")
+    # Per-item sales breakdown
+    sales_lines = []
+    for item in shop_state.strategy.menu:
+        total = _get_total_item_orders(shop_state, item.name)
+        recent = _count_item_in_recent_orders(shop_state, item.name, 15)
+        pct = (total / shop_state.total_orders * 100) if shop_state.total_orders > 0 else 0
+        current_price = shop_state.get_current_price(item.name) or item.base_price
+        margin = ((current_price - item.cost_to_make) / current_price * 100) if current_price > 0 else 0
+        sales_lines.append(
+            f"  {item.name}: {total} total, {recent} in last 15 "
+            f"({pct:.0f}% of orders), margin {margin:.0f}%"
+        )
 
-    # Format price adjustments
+    # Price adjustments
     price_lines = []
-    for item, price in shop_state.current_prices.items():
-        base = next((i.base_price for i in shop_state.strategy.menu if i.name == item), 0)
+    for item_name, price in shop_state.current_prices.items():
+        base = next((i.base_price for i in shop_state.strategy.menu if i.name == item_name), 0)
         diff = price - base
-        price_lines.append(f"  {item}: ${price:.2f} ({'+' if diff >= 0 else ''}{diff:.2f} from base)")
+        price_lines.append(f"  {item_name}: ${price:.2f} ({'+' if diff >= 0 else ''}{diff:.2f} from base)")
+
+    avg_order = (shop_state.total_revenue / shop_state.total_orders) if shop_state.total_orders > 0 else 0
 
     system = AUTONOMOUS_SYSTEM_PROMPT.format(
         business_name=shop_state.strategy.business_name,
@@ -285,10 +545,11 @@ def _make_autonomous_decision(
 
     prompt = AUTONOMOUS_PROMPT_TEMPLATE.format(
         inventory_status="\n".join(inv_lines) if inv_lines else "  No inventory data",
-        total_orders=shop_state.total_orders,
+        sales_breakdown="\n".join(sales_lines) if sales_lines else "  No sales data yet",
         total_revenue=shop_state.total_revenue,
         cash_on_hand=shop_state.cash_on_hand,
-        recent_orders="\n".join(order_lines) if order_lines else "  No orders yet",
+        total_orders=shop_state.total_orders,
+        avg_order_value=avg_order,
         price_adjustments="\n".join(price_lines) if price_lines else "  No adjustments (all base prices)",
         trigger=trigger,
     )
@@ -316,14 +577,24 @@ def _make_autonomous_decision(
         return None
 
 
+# ─── Action Application with Guardrails ──────────────────────────────────────
+
 def _apply_action(shop_state: ShopState, action: ShopAction):
-    """Apply an autonomous action to the shop state."""
+    """Apply an autonomous action to the shop state. All guardrails enforced here."""
     details = action.details
 
     if action.action_type == ShopActionType.ADJUST_PRICE:
         item_name = details.get("item_name", "")
         new_price = float(details.get("new_price", 0))
-        if item_name and new_price > 0:
+        menu_item = _get_menu_item(shop_state, item_name)
+
+        if item_name and new_price > 0 and menu_item:
+            # Price guardrails
+            price_floor = round(menu_item.cost_to_make * MIN_MARGIN_MULTIPLIER, 2)
+            price_ceiling = round(menu_item.base_price * (1 + MAX_MARKUP_PCT), 2)
+            new_price = max(new_price, price_floor)
+            new_price = min(new_price, price_ceiling)
+            new_price = round(new_price, 2)
             shop_state.current_prices[item_name] = new_price
 
     elif action.action_type == ShopActionType.REMOVE_ITEM:
@@ -336,13 +607,26 @@ def _apply_action(shop_state: ShopState, action: ShopAction):
         quantity = int(details.get("quantity", 0))
         for inv in shop_state.inventory:
             if inv.menu_item_name == item_name:
+                # Clamp quantity to not exceed max_capacity
+                space = inv.max_capacity - inv.quantity_remaining
+                quantity = min(quantity, space)
+                if quantity <= 0:
+                    break
+
                 cost = inv.unit_cost * quantity
-                if cost <= shop_state.cash_on_hand:
-                    inv.quantity_remaining = min(inv.max_capacity, inv.quantity_remaining + quantity)
-                    shop_state.cash_on_hand -= cost
-                    # If it was removed due to stock, put it back
-                    if item_name in shop_state.removed_items:
-                        shop_state.removed_items.remove(item_name)
+
+                # Restock guardrails
+                if cost > shop_state.cash_on_hand - MIN_CASH_RESERVE:
+                    break  # Maintain reserve
+                if cost > shop_state.cash_on_hand * MAX_RESTOCK_SPEND_PCT:
+                    break  # Don't blow budget
+
+                inv.quantity_remaining += quantity
+                shop_state.cash_on_hand -= cost
+
+                # If it was removed due to stock, put it back
+                if item_name in shop_state.removed_items:
+                    shop_state.removed_items.remove(item_name)
                 break
 
     shop_state.action_log.append(action)
@@ -354,25 +638,3 @@ def _decrement_inventory(shop_state: ShopState, item_name: str):
         if inv.menu_item_name == item_name:
             inv.quantity_remaining = max(0, inv.quantity_remaining - 1)
             break
-
-
-# ─── Shop initialization ────────────────────────────────────────────────────
-
-def initialize_shop(strategy: Strategy, starting_cash: float = 500.0) -> ShopState:
-    """Create initial shop state from a finalized strategy."""
-    inventory = []
-    for item in strategy.menu:
-        # Default inventory: 30 units per item, restock at 5
-        inventory.append(InventoryItem(
-            menu_item_name=item.name,
-            quantity_remaining=30,
-            restock_threshold=5,
-            max_capacity=50,
-            unit_cost=item.cost_to_make,
-        ))
-
-    return ShopState(
-        strategy=strategy,
-        inventory=inventory,
-        cash_on_hand=starting_cash,
-    )

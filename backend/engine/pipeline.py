@@ -16,12 +16,13 @@ Or programmatically:
 import json
 import sys
 import time
+from datetime import datetime
 from typing import Optional
 from models.schema import BusinessConcept, PipelineState
 from agents.strategist import create_strategy, refine_strategy
 from agents.crowd import generate_personas, get_demographics
 from agents.simulator import run_simulation
-from agents.shop import initialize_shop, handle_customer, check_autonomous_triggers
+from agents.shop import initialize_shop, process_order, periodic_review
 from utils.llm_client import LLMClient, MockLLMClient
 
 
@@ -165,16 +166,22 @@ def run_pipeline(
 
 def run_shop_repl(state: PipelineState, client: Optional[LLMClient] = None):
     """
-    Interactive REPL for the shop. For demo and testing.
-    
+    Interactive REPL for the shop. Order-based interface (no cashier).
+
     Commands:
-        (any text) — send as customer message
-        /status    — show shop state
-        /inventory — show inventory
-        /actions   — show autonomous action log
-        /menu      — show current menu
-        /quit      — exit
+        (any text)         — generate a random order from active menu
+        /order item1,item2 — create order with specific items
+        /rush N            — simulate N random orders
+        /review            — manually trigger periodic review
+        /status            — show shop state
+        /inventory         — show inventory
+        /actions           — show autonomous action log
+        /menu              — show current menu
+        /quit              — exit
     """
+    import random as _rand
+    from models.schema import Order
+
     if client is None:
         client = LLMClient()
 
@@ -183,30 +190,109 @@ def run_shop_repl(state: PipelineState, client: Optional[LLMClient] = None):
         return
 
     shop = state.shop_state
-    print(f"\n🚚 {shop.strategy.business_name} — SHOP REPL")
+    rng = _rand.Random(42)
+    order_counter = 0
+
+    print(f"\n🚚 {shop.strategy.business_name} — OPERATIONS REPL")
     print("=" * 50)
-    print("Type a message as a customer, or use /commands")
-    print("Commands: /status, /inventory, /actions, /menu, /quit\n")
+    print("Press Enter or type anything to generate a random order.")
+    print("Commands: /order items, /rush N, /review, /status, /inventory, /actions, /menu, /quit\n")
+
+    def _make_random_order() -> Order:
+        nonlocal order_counter
+        order_counter += 1
+        active = shop.get_active_menu()
+        if not active:
+            return None
+
+        # Pick 1-3 items with bias toward entrees
+        entrees = [i for i in active if i.category.lower() == "entree"]
+        others = [i for i in active if i.category.lower() != "entree"]
+
+        items = []
+        num_items = rng.choices([1, 2, 3], weights=[3, 5, 2])[0]
+        for _ in range(num_items):
+            if entrees and rng.random() < 0.6:
+                items.append(rng.choice(entrees).name)
+            elif others:
+                items.append(rng.choice(others).name)
+            elif entrees:
+                items.append(rng.choice(entrees).name)
+
+        if not items:
+            return None
+
+        return Order(
+            id=f"ORD-{order_counter:04d}",
+            timestamp=datetime.now().isoformat(),
+            customer_name=f"Customer #{order_counter}",
+            items=items,
+            total_price=0,  # recalculated by process_order
+            status="preparing",
+        )
+
+    def _process_and_display(order: Order):
+        if order is None:
+            print("  No active menu items available!")
+            return
+        actions = process_order(shop, order, client)
+        # Display order
+        for action in actions:
+            if not action.autonomous:
+                print(f"  📋 {action.description}")
+            else:
+                print(f"  🤖 [AUTO] {action.description}")
 
     while True:
         try:
-            user_input = input("Customer > ").strip()
+            user_input = input("Shop > ").strip()
         except (EOFError, KeyboardInterrupt):
             break
 
-        if not user_input:
-            continue
-
         if user_input.startswith("/"):
-            cmd = user_input.lower()
+            parts = user_input.split(None, 1)
+            cmd = parts[0].lower()
 
             if cmd == "/quit":
                 print("\nClosing shop. Final stats:")
                 print(f"  Total orders: {shop.total_orders}")
                 print(f"  Total revenue: ${shop.total_revenue:.2f}")
                 print(f"  Cash on hand: ${shop.cash_on_hand:.2f}")
-                print(f"  Autonomous decisions: {sum(1 for a in shop.action_log if a.autonomous)}")
+                auto_count = sum(1 for a in shop.action_log if a.autonomous)
+                print(f"  Autonomous decisions: {auto_count}")
                 break
+
+            elif cmd == "/order":
+                if len(parts) < 2:
+                    print("  Usage: /order item1, item2")
+                    continue
+                item_names = [i.strip() for i in parts[1].split(",")]
+                order_counter += 1
+                order = Order(
+                    id=f"ORD-{order_counter:04d}",
+                    timestamp=datetime.now().isoformat(),
+                    customer_name=f"Customer #{order_counter}",
+                    items=item_names,
+                    total_price=0,
+                    status="preparing",
+                )
+                _process_and_display(order)
+
+            elif cmd == "/rush":
+                n = int(parts[1]) if len(parts) > 1 else 10
+                print(f"  Simulating {n} random orders...")
+                for i in range(n):
+                    order = _make_random_order()
+                    _process_and_display(order)
+                print(f"  Done — {n} orders processed.")
+
+            elif cmd == "/review":
+                print("  Running periodic review...")
+                actions = periodic_review(shop, client)
+                if not actions:
+                    print("  No actions taken.")
+                for action in actions:
+                    print(f"  🤖 [REVIEW] {action.description}")
 
             elif cmd == "/status":
                 print(json.dumps(shop.to_dict(), indent=2))
@@ -214,30 +300,30 @@ def run_shop_repl(state: PipelineState, client: Optional[LLMClient] = None):
             elif cmd == "/inventory":
                 for inv in shop.inventory:
                     status = "❌ OUT" if inv.is_out else ("⚠️ LOW" if inv.is_low else "✅ OK")
-                    print(f"  {status} {inv.menu_item_name}: {inv.quantity_remaining}/{inv.max_capacity}")
+                    cat = ""
+                    for mi in shop.strategy.menu:
+                        if mi.name == inv.menu_item_name:
+                            cat = f" [{mi.category}]"
+                            break
+                    print(f"  {status} {inv.menu_item_name}{cat}: {inv.quantity_remaining}/{inv.max_capacity}")
 
             elif cmd == "/actions":
                 if not shop.action_log:
                     print("  No actions yet.")
                 for action in shop.action_log:
-                    prefix = "🤖" if action.autonomous else "👤"
+                    prefix = "🤖" if action.autonomous else "📋"
                     print(f"  {prefix} [{action.action_type.value}] {action.description}")
 
             elif cmd == "/menu":
                 print(shop.active_menu_display())
 
             else:
-                print("  Unknown command. Try /status, /inventory, /actions, /menu, /quit")
+                print("  Unknown command. Try /order, /rush, /review, /status, /inventory, /actions, /menu, /quit")
             continue
 
-        # Handle as customer message
-        response, actions = handle_customer(shop, user_input, client)
-        print(f"\n🚚 Cashier: {response}")
-
-        # Show any autonomous actions that were triggered
-        for action in actions:
-            if action.autonomous:
-                print(f"  🤖 [AUTO] {action.description}")
+        # Default: generate a random order
+        order = _make_random_order()
+        _process_and_display(order)
         print()
 
 
