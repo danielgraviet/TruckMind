@@ -76,11 +76,61 @@ function SentimentBar({ dist }) {
   )
 }
 
-export default function SimulationStats({ stats }) {
+function StatsSkeleton() {
   return (
-    <AnimatePresence>
-      {stats && (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4 animate-pulse">
+      {/* Header */}
+      <div className="h-3 bg-gray-800 rounded w-1/3" />
+      {/* 2×2 metrics */}
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="bg-gray-800 rounded-lg px-3 py-2.5 space-y-1.5">
+            <div className="h-3 bg-gray-700 rounded w-2/3" />
+            <div className="h-6 bg-gray-700 rounded w-1/2" />
+          </div>
+        ))}
+      </div>
+      {/* Sentiment bar */}
+      <div className="space-y-1.5">
+        <div className="h-3 bg-gray-800 rounded w-1/3" />
+        <div className="h-2 bg-gray-800 rounded-full" />
+        <div className="flex gap-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="h-3 bg-gray-800 rounded w-12" />
+          ))}
+        </div>
+      </div>
+      {/* Strengths + Concerns */}
+      {[0, 1].map(section => (
+        <div key={section} className="space-y-1.5">
+          <div className="h-3 bg-gray-800 rounded w-1/5" />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-3 bg-gray-800 rounded" style={{ width: `${70 + i * 8}%` }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function SimulationStats({ stats, phase }) {
+  const isLoading = (phase === 'simulation' || phase === 'complete') && !stats
+
+  return (
+    <AnimatePresence mode="wait">
+      {isLoading ? (
         <motion.div
+          key="skeleton"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <StatsSkeleton />
+        </motion.div>
+      ) : stats ? (
+        <motion.div
+          key="content"
           initial={{ x: 40, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 40, opacity: 0 }}
@@ -138,7 +188,7 @@ export default function SimulationStats({ stats }) {
             </div>
           )}
         </motion.div>
-      )}
+      ) : null}
     </AnimatePresence>
   )
 }

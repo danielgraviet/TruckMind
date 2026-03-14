@@ -34,7 +34,7 @@ export default function PipelinePage({ onLaunch }) {
             mockMode={mockMode}
             onToggleMock={() => setMockMode(!mockMode)}
           />
-          <StrategyCard strategy={strategy} />
+          <StrategyCard strategy={strategy} phase={phase} />
         </div>
 
         {/* Right: persona grid + stats */}
@@ -42,8 +42,9 @@ export default function PipelinePage({ onLaunch }) {
           <ReactionBoard
             personas={personas}
             personaStates={personaStates}
+            phase={phase}
           />
-          <SimulationStats stats={stats} />
+          <SimulationStats stats={stats} phase={phase} />
         </div>
       </div>
 

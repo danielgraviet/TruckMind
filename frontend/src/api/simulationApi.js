@@ -222,13 +222,13 @@ export function connectMock(_concept, _location, onSnapshot, _onError) {
   const at = (ms, payload) =>
     timeouts.push(setTimeout(() => onSnapshot(normalizeSnapshot(payload)), ms))
 
-  // Strategy loading
-  at(0,   { phase: 'strategy', strategy: null,          personas: [],                    stats: null })
-  at(800, { phase: 'strategy', strategy: MOCK_STRATEGY, personas: [],                    stats: null })
+  // Strategy loading — skeleton visible for ~2.5s
+  at(0,    { phase: 'strategy', strategy: null,          personas: [],                    stats: null })
+  at(2500, { phase: 'strategy', strategy: MOCK_STRATEGY, personas: [],                    stats: null })
 
-  // Crowd generation — 10 batches of 10 personas, 200ms apart
+  // Crowd generation — 10 batches of 10 personas, 350ms apart (~3.5s window)
   for (let b = 0; b < 10; b++) {
-    at(1200 + b * 200, {
+    at(3200 + b * 350, {
       phase: 'personas',
       strategy: MOCK_STRATEGY,
       personas: makePersonas((b + 1) * 10, 0),
@@ -237,16 +237,16 @@ export function connectMock(_concept, _location, onSnapshot, _onError) {
   }
 
   // Simulation starts — all 100 personas, none revealed
-  at(3200, {
+  at(6800, {
     phase: 'simulation',
     strategy: MOCK_STRATEGY,
     personas: makePersonas(100, 0),
     stats: null,
   })
 
-  // Tier 1: reveal 5 per event, 400ms apart (10 events → 50 personas)
+  // Tier 1: reveal 5 per event, 600ms apart (10 events → 50 personas, ~6s)
   for (let b = 0; b < 10; b++) {
-    at(3600 + b * 400, {
+    at(7400 + b * 600, {
       phase: 'simulation',
       strategy: MOCK_STRATEGY,
       personas: makePersonas(100, (b + 1) * 5),
@@ -255,12 +255,12 @@ export function connectMock(_concept, _location, onSnapshot, _onError) {
   }
 
   // Tier 2 burst: 3 rapid events covering remaining 50
-  at(7900, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 67), stats: null })
-  at(8100, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 84), stats: null })
-  at(8300, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 100), stats: null })
+  at(13800, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 67),  stats: null })
+  at(14200, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 84),  stats: null })
+  at(14600, { phase: 'simulation', strategy: MOCK_STRATEGY, personas: makePersonas(100, 100), stats: null })
 
   // Complete
-  at(8700, {
+  at(15200, {
     phase: 'complete',
     strategy: MOCK_STRATEGY,
     personas: makePersonas(100, 100),
