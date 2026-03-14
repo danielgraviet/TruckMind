@@ -29,3 +29,6 @@ frontend/dist/
 # Misc
 *.log
 uv.lock
+.venv/
+node_modules
+dist
