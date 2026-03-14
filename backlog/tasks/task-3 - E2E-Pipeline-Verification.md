@@ -4,15 +4,18 @@ title: E2E Pipeline Verification
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:29'
+updated_date: '2026-03-14 17:32'
 labels:
   - backend
   - agent
   - p0-blocker
   - agent-architect
-dependencies: []
+dependencies:
+  - TASK-1
 references:
   - tasks/TICKET-2-e2e-verification.md
 priority: high
+milestone: podium-hackathon-2026
 ---
 
 ## Description

@@ -4,14 +4,18 @@ title: Shop Dashboard (Frontend)
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:30'
+updated_date: '2026-03-14 17:32'
 labels:
   - frontend
   - p0-blocker
   - frontend-lead
-dependencies: []
+dependencies:
+  - TASK-2
+  - TASK-5
 references:
   - tasks/TICKET-5-shop-dashboard.md
 priority: high
+milestone: podium-hackathon-2026
 ---
 
 ## Description

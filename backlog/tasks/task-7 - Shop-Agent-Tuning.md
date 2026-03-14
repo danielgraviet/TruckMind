@@ -4,15 +4,18 @@ title: Shop Agent Tuning
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:30'
+updated_date: '2026-03-14 17:32'
 labels:
   - backend
   - agent
   - p1-important
   - operations-engine
-dependencies: []
+dependencies:
+  - TASK-1
 references:
   - tasks/TICKET-6-shop-tuning.md
 priority: medium
+milestone: podium-hackathon-2026
 ---
 
 ## Description

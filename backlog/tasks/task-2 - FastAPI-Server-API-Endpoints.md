@@ -4,14 +4,17 @@ title: FastAPI Server & API Endpoints
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:29'
+updated_date: '2026-03-14 17:32'
 labels:
   - backend
   - p0-blocker
   - agent-architect
-dependencies: []
+dependencies:
+  - TASK-3
 references:
   - tasks/TICKET-1-fastapi-server.md
 priority: high
+milestone: podium-hackathon-2026
 ---
 
 ## Description
