@@ -6,7 +6,7 @@ TruckMind Demo Script (~3:00)
 
 ▎ "Starting a food truck is a big gamble. You don't know your menu, your customers, or your market until it's too late — and by the time you do, you've already spent the money."
 
-▎ "TruckMind is an agentic system that autonomously operates any business. Today we focused on food trucks — but the engine underneath works for any venture. We give you a full simulation before you spend a dime."
+▎ "TruckMind is an autonomous operator for food trucks. Before launch, it simulates the market. After launch, it runs pricing, inventory, and customer operations in real time. The underlying agent framework can extend to other small businesses, but today we're showing it on food trucks."
 
 Show the landing page / concept input field.
 
@@ -32,7 +32,7 @@ Show personas populating the grid — avatars with names, ages, occupations appe
 
 Show the three strategy cards appearing.
 
-▎ "Something that previously took weeks of market research and $10,000 through firms like Qualtrics — done in minutes, at token cost. This is the new meta."
+▎ "Something that used to take weeks of market research and thousands of dollars in surveys and consultants now happens in minutes at token cost."
 
 ---
 [1:15–1:50] Step 3 — Live Market Simulation
@@ -45,7 +45,7 @@ Show the reaction board animating — sentiment dots lighting up, colors shiftin
 
 [PAUSE DEMO — let audience absorb the board]
 
-▎ "The evaluator agent scores all three strategies and picks the winner automatically. No human in the loop. You can still flip between strategies here to see exactly how each persona reacted — but the agent has already done the analysis."
+▎ "The evaluator agent scores all three strategies and picks the winner automatically. A human can still review the results, but the system does not need a human to do the analysis. You can flip between strategies here to see exactly how each persona reacted."
 
 Highlight the winning strategy card. Click through the other strategy tabs to show per-strategy reactions.
 
@@ -71,10 +71,12 @@ Click "Simulate Rush." Orders flood in. Revenue counter animates upward.
 
 Point to the ActionFeed as entries appear:
 
-▎ "Street tacos just hit a surge — automatic price adjustment. Horchata inventory is low — restock decision made. The al pastor burrito hasn't moved — discount applied. Every one of these is an autonomous decision made by the agent in real time."
+▎ "Demand spikes on a popular item — TruckMind adjusts price automatically. Inventory gets low — TruckMind decides to restock. These are autonomous operating decisions happening in real time."
 
 Show inventory bars draining, then replenishing.
 
-▎ "In a real production system, that restock trigger doesn't just log a note — it schedules a delivery order from Costco or Walmart. The agent sees the problem and solves it end to end, without you."
+▎ "In a production system, that restock trigger would not just log a note — it could place a supplier order automatically through Costco, Walmart, or another delivery partner. The point is that the agent sees the problem and acts without waiting for the owner."
 
-▎ "That's TruckMind. From a single sentence to a simulated, fully operating business — in under three minutes. The same engine works for any business. We just started with food trucks."
+▎ "For the owner, that means better launch decisions before opening, and fewer operational decisions once the truck is live."
+
+▎ "That's TruckMind: from one sentence, to market validation, to a live business the agent can actively operate. Not an assistant. An operator."
