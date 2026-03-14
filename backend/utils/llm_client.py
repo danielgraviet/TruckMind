@@ -20,6 +20,9 @@ import os
 import re
 import random as _random
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 from typing import Any, Optional
 
 import anthropic

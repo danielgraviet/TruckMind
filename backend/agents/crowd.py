@@ -14,12 +14,32 @@ This is the Silicon Sampling engine — the key differentiator.
 import json
 import random
 import hashlib
+import pathlib
 from typing import Optional
 from models.schema import (
     Persona, Strategy, PriceSensitivity, MealPreference,
 )
 from utils.llm_client import LLMClient
 import utils.census as census
+
+# ─── Persona file cache ───────────────────────────────────────────────────────
+
+_PERSONA_CACHE_FILE = pathlib.Path(__file__).parent.parent / ".cache" / "personas.json"
+
+def _load_persona_cache() -> dict:
+    try:
+        return json.loads(_PERSONA_CACHE_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _save_persona_cache(cache: dict) -> None:
+    _PERSONA_CACHE_FILE.parent.mkdir(exist_ok=True)
+    _PERSONA_CACHE_FILE.write_text(json.dumps(cache, indent=2))
+
+def _persona_cache_key(location: str, strategy: Strategy, num_personas: int, num_seeds: int) -> str:
+    """Hash the inputs that determine what personas look like."""
+    raw = f"{location}|{strategy.menu_summary()}|{num_personas}|{num_seeds}"
+    return hashlib.md5(raw.encode()).hexdigest()
 
 
 
@@ -118,38 +138,322 @@ CACHED_DEMOGRAPHICS = {
             "Ski/outdoor culture influences spending",
         ],
     },
+    "Orem, UT": {
+        "total_population": 102_389,
+        "median_age": 26.0,
+        "median_household_income": 72_000,
+        "per_capita_income": 27_000,
+        "age_distribution": {
+            "18-24": 0.30,
+            "25-34": 0.22,
+            "35-44": 0.15,
+            "45-54": 0.12,
+            "55-64": 0.10,
+            "65+": 0.11,
+        },
+        "income_distribution": {
+            "under_25k": 0.18,
+            "25k-50k": 0.20,
+            "50k-75k": 0.22,
+            "75k-100k": 0.18,
+            "100k-150k": 0.14,
+            "150k_plus": 0.08,
+        },
+        "education_distribution": {
+            "high_school": 0.14,
+            "some_college": 0.25,
+            "bachelors": 0.36,
+            "graduate": 0.13,
+        },
+        "notable_traits": [
+            "Adjacent to Provo/BYU corridor",
+            "Mix of families and young professionals",
+            "UVU campus population (~40k students)",
+            "Growing suburban tech workforce",
+        ],
+    },
+    "Logan, UT": {
+        "total_population": 54_000,
+        "median_age": 24.5,
+        "median_household_income": 48_000,
+        "per_capita_income": 20_000,
+        "age_distribution": {
+            "18-24": 0.38,
+            "25-34": 0.20,
+            "35-44": 0.12,
+            "45-54": 0.10,
+            "55-64": 0.10,
+            "65+": 0.10,
+        },
+        "income_distribution": {
+            "under_25k": 0.30,
+            "25k-50k": 0.22,
+            "50k-75k": 0.20,
+            "75k-100k": 0.14,
+            "100k-150k": 0.09,
+            "150k_plus": 0.05,
+        },
+        "education_distribution": {
+            "high_school": 0.14,
+            "some_college": 0.24,
+            "bachelors": 0.35,
+            "graduate": 0.15,
+        },
+        "notable_traits": [
+            "Utah State University campus (~29k students)",
+            "High student population drives price sensitivity",
+            "Outdoor recreation culture (Cache Valley)",
+            "Lower income than Provo/SLC markets",
+        ],
+    },
+    "Lehi, UT": {
+        "total_population": 84_373,
+        "median_age": 25.4,
+        "median_household_income": 115_000,
+        "per_capita_income": 36_500,
+        "poverty_rate": 0.045,
+        "gender_split": {"male": 0.505, "female": 0.495},
+        "race_ethnicity": {
+            "white": 0.841,
+            "hispanic_latino": 0.075,
+            "asian": 0.028,
+            "black": 0.008,
+            "other_multi": 0.048,
+        },
+        "age_distribution": {
+            "18-24": 0.12,
+            "25-34": 0.38,   # High concentration of young professionals
+            "35-44": 0.25,
+            "45-54": 0.12,
+            "55-64": 0.08,
+            "65+": 0.05,
+        },
+        "income_distribution": {
+            "under_25k": 0.05,
+            "25k-50k": 0.08,
+            "50k-75k": 0.12,
+            "75k-100k": 0.20,
+            "100k-150k": 0.32,
+            "150k_plus": 0.23,
+        },
+        "education_distribution": {
+            "high_school": 0.10,
+            "some_college": 0.24,
+            "bachelors": 0.48,
+            "graduate": 0.18,
+        },
+        "notable_traits": [
+            "Heart of Silicon Slopes (high density of software engineers and tech workers)",
+            "Very high median income with low price sensitivity",
+            "Extremely high concentration of young families",
+            "Rapid suburban growth and heavy commuter traffic",
+        ],
+    },
+    "West Valley City, UT": {
+        "total_population": 140_230,
+        "median_age": 30.5,
+        "median_household_income": 76_500,
+        "per_capita_income": 25_400,
+        "poverty_rate": 0.102,
+        "gender_split": {"male": 0.51, "female": 0.49},
+        "race_ethnicity": {
+            "white": 0.420,
+            "hispanic_latino": 0.390,
+            "asian": 0.055,
+            "pacific_islander": 0.040,
+            "black": 0.025,
+            "other_multi": 0.070,
+        },
+        "age_distribution": {
+            "18-24": 0.15,
+            "25-34": 0.25,
+            "35-44": 0.22,
+            "45-54": 0.18,
+            "55-64": 0.12,
+            "65+": 0.08,
+        },
+        "income_distribution": {
+            "under_25k": 0.12,
+            "25k-50k": 0.22,
+            "50k-75k": 0.28,
+            "75k-100k": 0.20,
+            "100k-150k": 0.13,
+            "150k_plus": 0.05,
+        },
+        "education_distribution": {
+            "high_school": 0.40,
+            "some_college": 0.35,
+            "bachelors": 0.18,
+            "graduate": 0.07,
+        },
+        "notable_traits": [
+            "Most racially and ethnically diverse city in Utah",
+            "Strong working-class and industrial employment base",
+            "High concentration of Hispanic/Latino and Pacific Islander communities",
+            "More budget-conscious consumer base, high demand for quick/casual dining",
+        ],
+    },
+    "St. George, UT": {
+        "total_population": 99_958,
+        "median_age": 37.8,
+        "median_household_income": 70_500,
+        "per_capita_income": 32_100,
+        "poverty_rate": 0.095,
+        "gender_split": {"male": 0.49, "female": 0.51},
+        "race_ethnicity": {
+            "white": 0.810,
+            "hispanic_latino": 0.125,
+            "other_multi": 0.040,
+            "asian": 0.010,
+            "black": 0.015,
+        },
+        "age_distribution": {
+            "18-24": 0.12,
+            "25-34": 0.15,
+            "35-44": 0.13,
+            "45-54": 0.10,
+            "55-64": 0.15,
+            "65+": 0.35,  # Heavy retiree population
+        },
+        "income_distribution": {
+            "under_25k": 0.15,
+            "25k-50k": 0.22,
+            "50k-75k": 0.22,
+            "75k-100k": 0.16,
+            "100k-150k": 0.15,
+            "150k_plus": 0.10,
+        },
+        "education_distribution": {
+            "high_school": 0.20,
+            "some_college": 0.35,
+            "bachelors": 0.30,
+            "graduate": 0.15,
+        },
+        "notable_traits": [
+            "Major retirement destination (very high 65+ demographic)",
+            "Heavy tourism economy driven by nearby Zion National Park",
+            "Seasonal population spikes (snowbirds) in winter months",
+            "Diverse mix of wealthy retirees and lower-income service/hospitality workers",
+        ],
+    },
+    "Park City, UT": {
+        "total_population": 8_457,
+        "median_age": 42.5,
+        "median_household_income": 125_000,
+        "per_capita_income": 82_000,
+        "poverty_rate": 0.052,
+        "gender_split": {"male": 0.52, "female": 0.48},
+        "race_ethnicity": {
+            "white": 0.825,
+            "hispanic_latino": 0.140,
+            "asian": 0.015,
+            "other_multi": 0.015,
+            "black": 0.005,
+        },
+        "age_distribution": {
+            "18-24": 0.06,
+            "25-34": 0.20,
+            "35-44": 0.16,
+            "45-54": 0.22,
+            "55-64": 0.20,
+            "65+": 0.16,
+        },
+        "income_distribution": {
+            "under_25k": 0.08,
+            "25k-50k": 0.12,
+            "50k-75k": 0.15,
+            "75k-100k": 0.12,
+            "100k-150k": 0.20,
+            "150k_plus": 0.33,
+        },
+        "education_distribution": {
+            "high_school": 0.10,
+            "some_college": 0.18,
+            "bachelors": 0.45,
+            "graduate": 0.27,
+        },
+        "notable_traits": [
+            "Luxury resort town with massive tourist influx during ski season and Sundance",
+            "Extremely high disposable income and low price sensitivity",
+            "Demand for premium, high-quality, and niche dietary options (vegan, gluten-free)",
+            "Significant divide between affluent residents and seasonal service workers",
+        ],
+    }
+}
+
+
+_GENERIC_DEMOGRAPHICS = {
+    "total_population": 50_000,
+    "median_age": 35,
+    "median_household_income": 55_000,
+    "per_capita_income": 0,
+    "age_distribution": {"18-24": 0.15, "25-34": 0.25, "35-44": 0.20, "45-54": 0.18, "55-64": 0.12, "65+": 0.10},
+    "income_distribution": {"under_25k": 0.20, "25k-50k": 0.25, "50k-75k": 0.22, "75k-100k": 0.15, "100k-150k": 0.12, "150k_plus": 0.06},
+    "education_distribution": {"high_school": 0.15, "some_college": 0.25, "bachelors": 0.35, "graduate": 0.25},
+    "notable_traits": [],
 }
 
 
 def get_demographics(location: str) -> dict:
     """
-    Get demographic data for a location.
-    For now, falls back to cached data or a generic profile.
+    Get demographic data for a location. Three-tier fallback:
+      1. CACHED_DEMOGRAPHICS (Provo, SLC, Orem, Logan, etc.) — instant, no API call
+      2. Live Census ACS API (works for any US city)
+      3. Generic US average profile
     """
-    # Try exact match first
+    # Tier 1: cached data — exact match
     if location in CACHED_DEMOGRAPHICS:
         return CACHED_DEMOGRAPHICS[location]
 
-    # Try fuzzy match
+    # Tier 1: cached data — fuzzy match
     for key, data in CACHED_DEMOGRAPHICS.items():
         if location.lower() in key.lower() or key.lower() in location.lower():
             return data
-    
-    # TODO: fix this. This is acually making the api call, but is brittle because the api is bad. prioritize cache first. 
-    demographics = census.fetch_demographics(location_name=location)
-    if demographics:
-        return demographics
 
-    # Generic fallback
-    return {
-        "total_population": 50_000,
-        "median_age": 35,
-        "median_household_income": 55_000,
-        "age_distribution": {"18-24": 0.15, "25-34": 0.25, "35-44": 0.20, "45-54": 0.18, "55-64": 0.12, "65+": 0.10},
-        "income_distribution": {"under_25k": 0.20, "25k-50k": 0.25, "50k-75k": 0.22, "75k-100k": 0.15, "100k-150k": 0.12, "150k_plus": 0.06},
-        "education_distribution": {"high_school": 0.15, "some_college": 0.25, "bachelors": 0.35, "graduate": 0.25},
-        "notable_traits": [],
-    }
+    # Tier 2: live Census API
+    try:
+        city, state = census.parse_location(location)
+        return census.fetch_demographics_sync(city, state)
+    except Exception as e:
+        print(f"  Census API unavailable for '{location}' ({e}), using generic profile.")
+
+    # Tier 3: generic fallback
+    return _GENERIC_DEMOGRAPHICS
+
+
+# ─── Public entry point (cached) ─────────────────────────────────────────────
+
+def generate_personas(
+    location: str,
+    strategy: Strategy,
+    client: LLMClient,
+    num_personas: int = 100,
+    num_seeds: int = 20,
+) -> list[Persona]:
+    """
+    Generate a full persona crowd, using a file cache to skip LLM calls on
+    repeat runs with the same location + menu + counts.
+
+    Cache is invalidated automatically when strategy or counts change.
+    Delete .cache/personas.json to force a full regeneration.
+    """
+    cache = _load_persona_cache()
+    key = _persona_cache_key(location, strategy, num_personas, num_seeds)
+
+    if key in cache:
+        print(f"  Persona cache hit — loading {num_personas} personas from disk")
+        return [Persona.from_dict(d) for d in cache[key]]
+
+    print(f"  Persona cache miss — generating via LLM + expansion")
+    seeds = generate_seed_personas(location, strategy, client, num_seeds=num_seeds)
+    demographics = get_demographics(location)
+    personas = expand_personas(seeds, num_personas, location, demographics)
+
+    cache[key] = [p.to_dict() for p in personas]
+    _save_persona_cache(cache)
+    print(f"  Saved {len(personas)} personas to cache")
+
+    return personas
 
 
 # ─── Seed generation (LLM) ──────────────────────────────────────────────────
@@ -181,7 +485,7 @@ CRITICAL RULES FOR DIVERSITY:
 - Some should be excited about this truck, some indifferent, some actively disinterested.
 - Vary price sensitivity realistically with income (but not perfectly — some wealthy people are cheap, 
   some students splurge on food).
-- Dietary restrictions should reflect real-world rates (~5-8% vegetarian, ~1-2% vegan, ~6% gluten-free).
+- Dietary restrictions MUST reflect real-world rates. In a group of 10 personas, AT MOST 1-2 should have any restriction. Most people (85%+) have an EMPTY dietary_restrictions list [].
 
 Return a JSON array of persona objects:
 {{
@@ -568,7 +872,7 @@ def _parse_persona(data: dict, persona_id: str) -> Persona:
         name=data["name"],
         age=int(data["age"]),
         occupation=data["occupation"],
-        annual_income=int(data.get("annual_income", 40000)),
+        annual_income=max(8000, int(data.get("annual_income") or 40000)),
         household_size=int(data.get("household_size", 1)),
         neighborhood=data.get("neighborhood", "nearby"),
         price_sensitivity=PriceSensitivity(data.get("price_sensitivity", "medium")),
