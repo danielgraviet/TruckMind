@@ -125,13 +125,13 @@ function CharReveal({ text, startDelay = 800 }) {
 
 function ProgressBar({ allDone }) {
   return (
-    <div className="w-64 h-1.5 bg-gray-800 rounded-full overflow-hidden mx-auto">
+    <div className="w-64 h-0.5 rounded-full overflow-hidden mx-auto" style={{ background: 'var(--bg-card)' }}>
       <motion.div
-        className="h-full rounded-full bg-indigo-500"
+        className="h-full rounded-full"
         initial={{ width: '0%' }}
         animate={allDone ? { width: '100%' } : { width: '0%' }}
         transition={{ duration: 2.8, ease: 'easeInOut', delay: 1.6 }}
-        style={allDone ? { backgroundColor: '#4ade80' } : {}}
+        style={{ background: 'var(--accent)', boxShadow: '0 0 8px var(--accent-glow)' }}
       />
     </div>
   )
@@ -168,7 +168,8 @@ export default function LaunchTransitionPage({ strategy, stats, onComplete }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-950 overflow-hidden"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
+      style={{ background: 'var(--bg-base)' }}
       initial={{ opacity: 0 }}
       animate={exiting ? { opacity: 0, y: -60 } : { opacity: 1, y: 0 }}
       transition={exiting
@@ -180,7 +181,7 @@ export default function LaunchTransitionPage({ strategy, stats, onComplete }) {
       <motion.div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 60% 40% at 50% 45%, rgba(99,102,241,0.18) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 60% 40% at 50% 45%, rgba(201,241,53,0.08) 0%, transparent 70%)',
         }}
         animate={{ opacity: [0.6, 1, 0.6] }}
         transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
@@ -195,13 +196,14 @@ export default function LaunchTransitionPage({ strategy, stats, onComplete }) {
       </motion.div>
 
       {/* Business name */}
-      <h1 className="mt-6 text-3xl font-bold tracking-tight text-white text-center px-4">
+      <h1 className="mt-6 text-3xl font-bold tracking-tight text-white text-center px-4" style={{ fontFamily: 'var(--font-display)' }}>
         <CharReveal text={businessName} startDelay={800} />
       </h1>
 
       {/* Tagline */}
       <motion.p
-        className="mt-2 text-gray-400 text-base text-center px-6 max-w-sm"
+        className="mt-2 text-base text-center px-6 max-w-sm"
+        style={{ color: 'var(--text-2)', fontFamily: 'var(--font-body)' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.5 }}
@@ -224,7 +226,7 @@ export default function LaunchTransitionPage({ strategy, stats, onComplete }) {
               <AnimatedCheckmark delay={0} done={done} />
               <span
                 className="text-sm transition-colors duration-300"
-                style={{ color: done ? '#4ade80' : '#6b7280' }}
+                style={{ color: done ? 'var(--accent)' : 'var(--text-3)', fontFamily: 'var(--font-body)' }}
               >
                 {item.label}
               </span>
@@ -240,7 +242,13 @@ export default function LaunchTransitionPage({ strategy, stats, onComplete }) {
 
       {/* "Grand Opening" badge */}
       <motion.div
-        className="mt-8 px-4 py-1.5 rounded-full border border-indigo-500/40 text-indigo-300 text-xs tracking-widest uppercase"
+        className="mt-8 px-4 py-1.5 rounded-full text-xs tracking-widest uppercase"
+        style={{
+          border: '1px solid rgba(201,241,53,0.25)',
+          color: 'var(--accent)',
+          background: 'var(--accent-dim)',
+          fontFamily: 'var(--font-body)',
+        }}
         initial={{ opacity: 0 }}
         animate={allDone ? { opacity: 1 } : {}}
         transition={{ duration: 0.5 }}

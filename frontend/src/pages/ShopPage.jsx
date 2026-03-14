@@ -54,17 +54,26 @@ function CustomerServiceSection({
 }) {
   return (
     <div className="space-y-4 h-full">
-      <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/40 via-slate-950 to-blue-950/40 px-4 py-3">
+      <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200">Customer Message Lanes</h2>
-            <p className="mt-1 text-sm text-gray-400">Customers flow in automatically, and the AI cashier replies in-channel as decisions happen.</p>
+            <h2
+              className="text-[10px] font-semibold uppercase tracking-[0.25em]"
+              style={{ color: 'var(--text-2)', fontFamily: 'var(--font-body)' }}
+            >
+              Customer Message Lanes
+            </h2>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}>
+              Customers flow in automatically — the AI cashier replies in-channel.
+            </p>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${
-            automationActive
-              ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300'
-              : 'border border-gray-800 bg-gray-900 text-gray-500'
-          }`}>
+          <span
+            className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]"
+            style={automationActive
+              ? { background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(201,241,53,0.2)' }
+              : { background: 'var(--bg-card)', color: 'var(--text-3)', border: '1px solid var(--border)' }
+            }
+          >
             {automationActive ? 'Autopilot Live' : 'Standby'}
           </span>
         </div>
@@ -140,26 +149,23 @@ function PricingSection({ shopState, strategy }) {
 
 function ShopSkeleton() {
   return (
-    <div className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden animate-pulse">
-      <header className="border-b border-gray-800 px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-gray-800 rounded" />
-          <div className="space-y-1.5">
-            <div className="h-5 bg-gray-800 rounded w-40" />
-            <div className="h-3 bg-gray-800 rounded w-56" />
-          </div>
+    <div className="h-screen flex flex-col overflow-hidden animate-pulse" style={{ background: 'var(--bg-base)' }}>
+      <header className="px-5 py-3 flex items-center gap-4" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', minHeight: '52px' }}>
+        <div className="space-y-1.5">
+          <div className="h-4 rounded-lg w-36" style={{ background: 'var(--bg-card)' }} />
+          <div className="h-2.5 rounded w-24" style={{ background: 'var(--bg-card)' }} />
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-16 bg-gray-900 border-r border-gray-800" />
-        <div className="flex-1 p-4 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl h-48" />
+        <div className="w-16 flex-shrink-0" style={{ background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)' }} />
+        <div className="flex-1 p-4 space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            {[0,1,2,3,4,5].map(i => (
+              <div key={i} className="rounded-2xl h-32" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }} />
             ))}
           </div>
         </div>
-        <div className="w-72 bg-gray-900 border-l border-gray-800" />
+        <div className="w-72 flex-shrink-0" style={{ background: 'var(--bg-sidebar)', borderLeft: '1px solid var(--border)' }} />
       </div>
     </div>
   )
@@ -183,7 +189,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
   if (isLoading || !shopState) return <ShopSkeleton />
 
   return (
-    <div className="h-screen flex flex-col bg-gray-950 text-white overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg-base)', color: 'var(--text-1)' }}>
       {/* HEADER - fixed at top */}
       <OpsHeader
         businessName={businessName}
@@ -203,7 +209,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
         <OpsSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
         {/* MAIN CONTENT - scrollable */}
-        <main className="flex-1 overflow-y-auto p-4">
+        <main className="flex-1 overflow-y-auto p-4" style={{ background: 'var(--bg-base)' }}>
           {activeSection === 'ops' && (
             <OpsSection shopState={shopState} strategy={strategy} />
           )}
