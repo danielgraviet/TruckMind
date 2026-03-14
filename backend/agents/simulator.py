@@ -26,6 +26,7 @@ The cost is ~$0.15 per simulation round instead of ~$0.80.
 import json
 import random
 import math
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 from models.schema import (
     Strategy, Persona, PersonaReaction, MenuItemAnalysis,
@@ -36,8 +37,8 @@ from utils.llm_client import LLMClient
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 
-TIER1_BATCH_SIZE = 12      # Personas per LLM call (12 × ~100 tokens each fits easily)
-TIER1_TARGET = 30          # Total personas to simulate via LLM
+TIER1_BATCH_SIZE = 8       # Personas per LLM call (8 × ~120 tokens = ~960, safe under 2000)
+TIER1_TARGET = 24          # Total personas to simulate via LLM (3 batches of 8)
 SEED_PREFIX = "seed-"      # IDs starting with this are LLM-generated seeds
 
 SIMULATION_SYSTEM_PROMPT = """You are simulating realistic customer reactions to a food truck.
@@ -236,18 +237,27 @@ def _run_tier1(
     batch_size: int,
     on_reaction: Optional[callable],
 ) -> list[PersonaReaction]:
-    """Full LLM simulation for Tier 1 personas."""
-    all_reactions = []
+    """Full LLM simulation for Tier 1 personas — batches run in parallel."""
     batches = [personas[i:i + batch_size] for i in range(0, len(personas), batch_size)]
+    print(f"    Running {len(batches)} batches in parallel...")
 
-    for batch_idx, batch in enumerate(batches):
-        print(f"    Batch {batch_idx + 1}/{len(batches)} ({len(batch)} personas)...")
-        reactions = _simulate_batch_llm(strategy, batch, client)
+    all_reactions = []
 
-        for r in reactions:
-            all_reactions.append(r)
-            if on_reaction:
-                on_reaction(r)
+    with ThreadPoolExecutor(max_workers=len(batches)) as pool:
+        futures = {
+            pool.submit(_simulate_batch_llm, strategy, batch, client): idx
+            for idx, batch in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            try:
+                reactions = future.result()
+                print(f"    Batch done: {len(reactions)} reactions")
+                for r in reactions:
+                    all_reactions.append(r)
+                    if on_reaction:
+                        on_reaction(r)
+            except Exception as e:
+                print(f"    Batch failed: {e}")
 
     return all_reactions
 
@@ -279,7 +289,7 @@ def _simulate_batch_llm(
     response = client.complete_json_list(
         prompt=prompt,
         system=SIMULATION_SYSTEM_PROMPT,
-        max_tokens=4096,
+        max_tokens=2000,
         temperature=0.7,
     )
 

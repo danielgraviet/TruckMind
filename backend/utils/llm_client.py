@@ -576,7 +576,39 @@ class MockLLMClient:
             return _MOCK_SEED_PERSONAS
         if "react to this food truck" in prompt:
             return self._mock_simulation_batch(prompt)
+        if "food business strategist" in s and "three distinct" in prompt.lower():
+            return self._mock_strategy_options()
         return []
+
+    def _mock_strategy_options(self) -> list:
+        value = {**_MOCK_STRATEGY, "positioning": "value", "business_name": "Comet Tacos", "tagline": "Street tacos, student prices"}
+        premium = {
+            **_MOCK_STRATEGY,
+            "positioning": "premium",
+            "business_name": "Solis Kitchen",
+            "tagline": "Elevated Mexican street food",
+            "menu": [
+                {"name": "Wagyu Birria Taco", "description": "Slow-braised wagyu, consommé dipping broth", "category": "entree", "base_price": 9.00, "cost_to_make": 3.20, "prep_time_minutes": 4, "tags": []},
+                {"name": "Roasted Veggie Taco", "description": "Seasonal vegetables, chipotle crema, cotija", "category": "entree", "base_price": 7.50, "cost_to_make": 2.50, "prep_time_minutes": 3, "tags": ["vegetarian"]},
+                {"name": "Smoked Brisket Burrito", "description": "12-hour smoked beef, house salsa verde", "category": "entree", "base_price": 14.00, "cost_to_make": 5.00, "prep_time_minutes": 5, "tags": []},
+                {"name": "Elote Cup", "description": "Grilled corn, mayo, cotija, tajín", "category": "side", "base_price": 5.00, "cost_to_make": 1.50, "prep_time_minutes": 2, "tags": ["vegetarian", "gluten-free"]},
+                {"name": "Agua Fresca", "description": "Fresh seasonal fruit, lime, mint", "category": "drink", "base_price": 4.50, "cost_to_make": 1.00, "prep_time_minutes": 1, "tags": ["vegetarian", "gluten-free"]},
+            ],
+        }
+        niche = {
+            **_MOCK_STRATEGY,
+            "positioning": "niche",
+            "business_name": "Green Wheel",
+            "tagline": "100% plant-based Mexican, all day",
+            "menu": [
+                {"name": "Jackfruit Carnitas Taco", "description": "Slow-cooked jackfruit, pico, lime crema", "category": "entree", "base_price": 5.50, "cost_to_make": 1.80, "prep_time_minutes": 3, "tags": ["vegan", "gluten-free"]},
+                {"name": "Black Bean Chorizo Bowl", "description": "Spiced bean chorizo, rice, avocado", "category": "entree", "base_price": 9.00, "cost_to_make": 3.00, "prep_time_minutes": 4, "tags": ["vegan", "gluten-free"]},
+                {"name": "Cauliflower Al Pastor Taco", "description": "Achiote-marinated cauli, pineapple, cilantro", "category": "entree", "base_price": 5.00, "cost_to_make": 1.50, "prep_time_minutes": 3, "tags": ["vegan"]},
+                {"name": "Elote Fries", "description": "Sweet potato fries, lime aioli, tajín", "category": "side", "base_price": 4.50, "cost_to_make": 1.40, "prep_time_minutes": 3, "tags": ["vegan", "gluten-free"]},
+                {"name": "Horchata Oat Latte", "description": "Oat milk horchata, cold-brewed coffee", "category": "drink", "base_price": 4.00, "cost_to_make": 1.20, "prep_time_minutes": 1, "tags": ["vegan"]},
+            ],
+        }
+        return [value, premium, niche]
 
     # ── Cashier mock ────────────────────────────────────────────────────────
     # Parses item names + prices from the live menu in the system prompt so

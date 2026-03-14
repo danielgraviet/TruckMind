@@ -444,6 +444,7 @@ def generate_personas(
     if key in cache:
         print(f"  Persona cache hit — loading {num_personas} personas from disk")
         personas = [Persona.from_dict(d) for d in cache[key]]
+        random.shuffle(personas)  # different faces appear each run
         if on_persona:
             for p in personas:
                 on_persona(p)

@@ -83,6 +83,7 @@ class Strategy:
     location_rationale: str           # why this specific spot
     competitive_advantage: str
     version: int = 1                  # incremented on refinement
+    positioning: str = ""             # "value", "premium", or "niche"
 
     def to_dict(self) -> dict:
         return {
@@ -95,6 +96,7 @@ class Strategy:
             "location_rationale": self.location_rationale,
             "competitive_advantage": self.competitive_advantage,
             "version": self.version,
+            "positioning": self.positioning,
         }
 
     def menu_summary(self) -> str:

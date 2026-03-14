@@ -23,38 +23,81 @@ You think about:
 
 You are decisive. You don't hedge. You make clear recommendations."""
 
-STRATEGY_PROMPT_TEMPLATE = """Given this business concept, create a complete food truck operating plan.
+STRATEGY_PROMPT_TEMPLATE = """Given this business concept, create a food truck operating plan as JSON.
 
 {concept}
 
-Generate a detailed strategy as JSON with this exact structure:
+Return ONLY this JSON structure, no extra text:
 {{
-    "business_name": "Creative, memorable name",
-    "tagline": "Short catchy tagline",
+    "business_name": "Name",
+    "tagline": "Tagline",
     "menu": [
         {{
             "name": "Item Name",
-            "description": "Brief appetizing description",
+            "description": "10 words max",
             "category": "entree|side|drink|dessert",
             "base_price": 0.00,
             "cost_to_make": 0.00,
             "prep_time_minutes": 0,
-            "tags": ["vegetarian", "spicy", "gluten-free", etc.]
+            "tags": ["vegetarian", "spicy", "gluten-free"]
         }}
     ],
-    "target_demographic_summary": "2-3 sentences about who your customers are",
-    "pricing_rationale": "Why these price points work for this market",
-    "operating_hours": "e.g. 11am-8pm",
-    "location_rationale": "Why this specific location/area works",
-    "competitive_advantage": "What makes this truck win"
+    "target_demographic_summary": "One sentence.",
+    "pricing_rationale": "One sentence.",
+    "operating_hours": "11am-8pm",
+    "location_rationale": "One sentence.",
+    "competitive_advantage": "One sentence."
 }}
 
-Requirements:
-- Menu should have 5-8 items across categories
-- Every item must have realistic cost_to_make (30-40% of price for a food truck)
-- Prices should reflect the local market (this is {location}, not NYC)
-- Include at least one vegetarian option
-- Include at least one option under $6
+Rules:
+- 5-8 menu items
+- cost_to_make = 30-40% of base_price
+- Prices fit {location} (college town, not NYC)
+- At least one vegetarian option and one item under $6
+"""
+
+STRATEGY_OPTIONS_PROMPT_TEMPLATE = """Given this business concept, create THREE distinct food truck strategies as a JSON array.
+
+{concept}
+
+Each strategy must have a different positioning angle:
+1. "value"   — Budget-friendly, high-volume. Prices 20-30% below market. Targets students/budget-conscious.
+2. "premium" — Quality-first, smaller menu, higher margins. Targets professionals/foodies willing to pay more.
+3. "niche"   — Hyper-specialized concept serving an underserved segment (dietary, cultural, etc.).
+
+Return ONLY a JSON array with exactly 3 objects:
+[
+    {{
+        "positioning": "value",
+        "business_name": "Name",
+        "tagline": "Tagline",
+        "menu": [
+            {{
+                "name": "Item Name",
+                "description": "10 words max",
+                "category": "entree|side|drink|dessert",
+                "base_price": 0.00,
+                "cost_to_make": 0.00,
+                "prep_time_minutes": 0,
+                "tags": []
+            }}
+        ],
+        "target_demographic_summary": "One sentence.",
+        "pricing_rationale": "One sentence.",
+        "operating_hours": "11am-8pm",
+        "location_rationale": "One sentence.",
+        "competitive_advantage": "One sentence."
+    }},
+    {{ ...premium... }},
+    {{ ...niche... }}
+]
+
+Rules:
+- 5-8 menu items per strategy
+- cost_to_make = 30-40% of base_price
+- Prices fit {location}
+- Each strategy must feel GENUINELY DIFFERENT — different names, different menus, different price points
+- At least one vegetarian option per strategy
 """
 
 REFINEMENT_PROMPT_TEMPLATE = """You created this food truck strategy:
@@ -96,7 +139,7 @@ def create_strategy(concept: BusinessConcept, client: LLMClient) -> Strategy:
     response = client.complete_json(
         prompt=prompt,
         system=SYSTEM_PROMPT,
-        max_tokens=4096,
+        max_tokens=1000,
         temperature=0.7,
     )
 
@@ -104,6 +147,32 @@ def create_strategy(concept: BusinessConcept, client: LLMClient) -> Strategy:
         raise ValueError(f"Failed to parse strategy JSON. Raw response:\n{response.raw_text[:500]}")
 
     return _parse_strategy(response.parsed_json)
+
+
+def create_strategy_options(concept: BusinessConcept, client: LLMClient) -> list:
+    """Generate 3 strategy options (value/premium/niche) in a single LLM call."""
+    prompt = STRATEGY_OPTIONS_PROMPT_TEMPLATE.format(
+        concept=concept.to_prompt(),
+        location=concept.location,
+    )
+
+    response = client.complete_json_list(
+        prompt=prompt,
+        system=SYSTEM_PROMPT,
+        max_tokens=3000,
+        temperature=0.8,
+    )
+
+    if not response.parsed_json or not isinstance(response.parsed_json, list):
+        raise ValueError(f"Failed to parse strategy options JSON. Raw:\n{response.raw_text[:500]}")
+
+    strategies = []
+    for data in response.parsed_json[:3]:
+        s = _parse_strategy(data)
+        s.positioning = data.get("positioning", "")
+        strategies.append(s)
+
+    return strategies
 
 
 def refine_strategy(
@@ -140,8 +209,8 @@ def refine_strategy(
     response = client.complete_json(
         prompt=prompt,
         system=SYSTEM_PROMPT,
-        max_tokens=4096,
-        temperature=0.5,  # Slightly more deterministic for refinement
+        max_tokens=1000,
+        temperature=0.5,
     )
 
     if not response.parsed_json:

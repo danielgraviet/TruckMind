@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock }) {
+export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock, buttonLabel = 'Run Analysis' }) {
   const [concept, setConcept]   = useState('')
   const [location, setLocation] = useState('Provo, UT')
 
@@ -63,7 +63,7 @@ export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock 
             disabled={!concept.trim() || isRunning}
             className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
           >
-            {isRunning ? 'Running…' : 'Run Analysis'}
+            {isRunning ? 'Running…' : buttonLabel}
           </button>
         </div>
       </form>
