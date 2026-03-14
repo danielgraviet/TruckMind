@@ -83,13 +83,20 @@ export default function PipelinePage({ onLaunch }) {
   const {
     phase, strategy, strategyOptions, testingIndex, totalStrategies,
     winnerIndex, winnerRationale, strategyResults,
-    personas, personaStates, stats, isRunning,
+    personas, personaStates, strategyPersonaStates, stats, isRunning,
   } = state
 
   const isIdle      = phase === 'idle'
   const isTesting   = phase === 'testing'
   const isEval      = phase === 'evaluating'
   const isComplete  = phase === 'complete'
+
+  // Selected strategy tab (for reviewing all 3 when complete)
+  const [selectedStrategyIndex, setSelectedStrategyIndex] = useState(null)
+
+  useEffect(() => {
+    if (isComplete && winnerIndex != null) setSelectedStrategyIndex(winnerIndex)
+  }, [isComplete, winnerIndex])
 
   // Countdown state
   const [countdown, setCountdown] = useState(LAUNCH_DELAY)
@@ -176,6 +183,8 @@ export default function PipelinePage({ onLaunch }) {
                     isCurrent={isTesting && testingIndex === i}
                     isComplete={isComplete || (strategyResults.length > i)}
                     stats={getStrategyStats(i)}
+                    isSelected={isComplete && selectedStrategyIndex === i}
+                    onClick={isComplete ? () => setSelectedStrategyIndex(i) : undefined}
                   />
                 ))}
               </motion.div>
@@ -190,14 +199,23 @@ export default function PipelinePage({ onLaunch }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               <div className="space-y-4">
                 <WinnerCard
-                  strategy={strategy}
-                  stats={stats}
-                  rationale={winnerRationale}
+                  strategy={selectedStrategyIndex != null ? strategyOptions[selectedStrategyIndex] : strategy}
+                  stats={selectedStrategyIndex != null ? (getStrategyStats(selectedStrategyIndex) ?? stats) : stats}
+                  rationale={selectedStrategyIndex === winnerIndex ? winnerRationale : null}
+                  isWinner={selectedStrategyIndex === winnerIndex}
                 />
               </div>
               <div className="space-y-4">
-                <ReactionBoard personas={personas} personaStates={personaStates} phase={phase} />
-                <SimulationStats stats={stats} phase={phase} />
+                <ReactionBoard
+                  personas={personas}
+                  personaStates={
+                    selectedStrategyIndex != null && strategyPersonaStates[selectedStrategyIndex]
+                      ? strategyPersonaStates[selectedStrategyIndex]
+                      : personaStates
+                  }
+                  phase={phase}
+                />
+                <SimulationStats stats={selectedStrategyIndex != null ? (getStrategyStats(selectedStrategyIndex) ?? stats) : stats} phase={phase} />
               </div>
             </div>
           ) : (
