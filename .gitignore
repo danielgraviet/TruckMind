@@ -29,6 +29,9 @@ Thumbs.db
 node_modules/
 frontend/dist/
 
+# Worktrees
+.worktrees/
+
 # Misc
 *.log
 uv.lock
