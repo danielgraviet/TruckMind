@@ -616,6 +616,107 @@ OCCUPATIONS_BY_AGE = {
     ],
 }
 
+# City-specific occupation overrides — used when a city's workforce differs
+# significantly from the BYU/UVU-skewed default list above.
+OCCUPATIONS_BY_AGE_OVERRIDES: dict[str, dict[str, list[str]]] = {
+    "St. George, UT": {
+        "18-24": [
+            "Dixie State University student", "hotel front desk clerk",
+            "restaurant server", "retail associate", "landscaping crew",
+            "National Park guide", "part-time housekeeper", "delivery driver",
+        ],
+        "25-34": [
+            "hospitality manager", "contractor", "dental hygienist",
+            "real estate agent", "retail manager", "elementary school teacher",
+            "outdoor tour guide", "medical assistant",
+        ],
+        "55-64": [
+            "semi-retired contractor", "property manager", "golf course manager",
+            "part-time real estate investor", "retired from out-of-state",
+            "snowbird business owner", "franchise owner",
+        ],
+        "65+": [
+            "retired snowbird", "retired professional", "part-time volunteer",
+            "retired military", "seasonal resident", "retired executive",
+        ],
+    },
+    "Park City, UT": {
+        "18-24": [
+            "ski resort lift operator", "ski patrol trainee", "barista",
+            "resort hospitality staff", "part-time guide", "nanny/au pair",
+            "outdoor gear shop associate", "film festival volunteer",
+        ],
+        "25-34": [
+            "ski instructor", "real estate agent", "resort manager",
+            "remote software engineer", "financial analyst (remote)",
+            "personal trainer", "restaurant manager", "event planner",
+        ],
+        "35-44": [
+            "resort director", "luxury real estate broker", "venture capitalist (remote)",
+            "hedge fund manager (remote)", "startup founder", "film producer",
+            "private equity analyst", "boutique hotel owner",
+        ],
+        "45-54": [
+            "retired tech executive", "investment manager", "wealth advisor",
+            "commercial real estate developer", "ski resort executive",
+            "private equity partner", "successful entrepreneur",
+        ],
+        "55-64": [
+            "semi-retired investor", "luxury real estate developer",
+            "part-time consultant", "resort board member", "angel investor",
+        ],
+        "65+": [
+            "retired executive", "retired athlete", "seasonal resident",
+            "art gallery owner", "philanthropist", "retired surgeon",
+        ],
+    },
+    "West Valley City, UT": {
+        "18-24": [
+            "warehouse associate", "delivery driver", "fast food worker",
+            "retail associate", "construction laborer", "part-time mechanic",
+            "SLCC student", "manufacturing line worker",
+        ],
+        "25-34": [
+            "warehouse supervisor", "truck driver", "electrician",
+            "HVAC technician", "plumber", "Amazon fulfillment worker",
+            "medical assistant", "office manager",
+        ],
+        "35-44": [
+            "construction foreman", "logistics coordinator", "small business owner",
+            "electrician (journeyman)", "warehouse operations manager",
+            "car mechanic shop owner", "restaurant owner",
+        ],
+    },
+    "Logan, UT": {
+        "18-24": [
+            "Utah State University student", "USU research assistant",
+            "part-time barista", "outdoor guide", "restaurant server",
+            "farm/agriculture intern", "retail associate", "ski patrol",
+        ],
+        "25-34": [
+            "agricultural researcher", "USU graduate student", "teacher",
+            "engineer at local firm", "veterinarian", "physical therapist",
+            "small business owner", "remote software developer",
+        ],
+    },
+    "Lehi, UT": {
+        "18-24": [
+            "tech internship", "retail associate", "part-time software developer",
+            "community college student", "startup QA tester", "delivery driver",
+        ],
+        "25-34": [
+            "software engineer at Silicon Slopes company", "product manager",
+            "cybersecurity analyst", "DevOps engineer", "data scientist",
+            "SaaS sales rep", "startup founder", "UX researcher",
+        ],
+        "35-44": [
+            "senior software engineer", "engineering manager", "VP of product",
+            "startup CTO", "director of engineering", "tech company founder",
+            "solutions architect", "principal engineer",
+        ],
+    },
+}
+
 NEIGHBORHOODS = {
     "Provo, UT": [
         "downtown Provo", "near BYU campus", "Joaquin neighborhood",
@@ -626,6 +727,36 @@ NEIGHBORHOODS = {
         "Sugar House", "downtown SLC", "The Avenues", "Capitol Hill",
         "Liberty Park area", "9th and 9th", "Marmalade District",
         "East Bench", "Rose Park", "Poplar Grove",
+    ],
+    "Orem, UT": [
+        "near UVU campus", "University Parkway corridor", "Center Street area",
+        "State Street corridor", "North Orem", "South Orem", "Cascade",
+        "Sharon Park", "near Orem Fitness District", "Geneva Road area",
+    ],
+    "Logan, UT": [
+        "near USU campus", "downtown Logan", "North Logan",
+        "Providence", "River Heights", "Hyde Park", "Smithfield",
+        "Millville", "Cache Valley floor", "east bench above Logan",
+    ],
+    "Lehi, UT": [
+        "Silicon Slopes corridor", "Traverse Mountain", "Thanksgiving Point area",
+        "North Lehi", "Scott's Pond", "I-15 corridor", "Holbrook Farms",
+        "American Fork border", "Lehi Crossing", "Saddleback",
+    ],
+    "West Valley City, UT": [
+        "Hunter", "Granger", "Chesterfield", "Stonebridge",
+        "Redwood Road corridor", "Valley Fair area", "West Pointe",
+        "Fairbourne Station", "Copper Hills border", "West Jordan border",
+    ],
+    "St. George, UT": [
+        "downtown St. George", "Bloomington Hills", "Sunriver",
+        "Entrada", "Little Valley", "Washington City", "Hurricane area",
+        "Snow Canyon area", "Southgate", "Desert Color",
+    ],
+    "Park City, UT": [
+        "Old Town Park City", "Deer Valley", "Kimball Junction",
+        "Prospector", "Sun Peak", "Pinebrook", "Jeremy Ranch",
+        "Snyderville Basin", "Quarry Mountain", "Silver Springs",
     ],
 }
 
@@ -714,8 +845,10 @@ def _create_variant(
     # Derive price sensitivity from income (with noise)
     price_sensitivity = _derive_price_sensitivity(income, rng)
 
-    # Pick occupation appropriate to age
-    occupation = rng.choice(OCCUPATIONS_BY_AGE.get(age_bracket, ["professional"]))
+    # Pick occupation appropriate to age, using city-specific list when available
+    city_occupations = OCCUPATIONS_BY_AGE_OVERRIDES.get(location, {})
+    occupation_pool = city_occupations.get(age_bracket) or OCCUPATIONS_BY_AGE.get(age_bracket, ["professional"])
+    occupation = rng.choice(occupation_pool)
 
     # Generate name
     first = rng.choice(FIRST_NAMES)
@@ -766,7 +899,7 @@ def _create_variant(
     uid = hashlib.md5(f"{name}-{age}-{variant_num}".encode()).hexdigest()[:8]
 
     # Backstory: pick a random fragment and fill in
-    backstory = _generate_backstory(name, age, occupation, rng)
+    backstory = _generate_backstory(name, age, occupation, rng, location)
 
     # Education correlates with age and income
     education = _weighted_choice(demographics.get("education_distribution", {}), rng)
@@ -838,19 +971,24 @@ def _derive_price_sensitivity(income: int, rng: random.Random) -> PriceSensitivi
         return PriceSensitivity.LOW
 
 
-def _generate_backstory(name: str, age: int, occupation: str, rng: random.Random) -> str:
+def _generate_backstory(name: str, age: int, occupation: str, rng: random.Random, location: str = "") -> str:
     """Build a plausible 2-sentence backstory."""
     origins = ["California", "Idaho", "Arizona", "Texas", "the Midwest", "the East Coast", "Oregon"]
-    # TODO: remove if not used
-    companies = ["a local tech startup", "Qualtrics", "a small business downtown", "BYU", "the hospital", "a law firm"]
     weaknesses = ["street tacos", "burgers", "fried chicken", "boba tea", "pizza", "ice cream"]
-    # TODO: removed if not used. 
-    reasons = ["car repairs", "holiday spending", "student loans", "medical bills", "saving for a trip"]
+
+    # Map location to the university mentioned in backstories
+    _university_by_location = {
+        "Provo, UT": "BYU",
+        "Orem, UT": "UVU",
+        "Logan, UT": "Utah State",
+        "St. George, UT": "Dixie State",
+    }
+    local_university = _university_by_location.get(location, "the local university")
 
     sentences = []
 
     if age < 25 and "student" in occupation.lower():
-        sentences.append(f"Currently studying at {'BYU' if rng.random() > 0.3 else 'UVU'}.")
+        sentences.append(f"Currently studying at {local_university}.")
     elif rng.random() > 0.5:
         years = rng.randint(1, max(1, min(age - 18, 30)))
         origin = rng.choice(origins)
