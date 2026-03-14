@@ -79,7 +79,7 @@ export default function OpsHeader({
 
   return (
     <header
-      className="flex items-center gap-4 px-5 flex-shrink-0"
+      className="flex items-center gap-4 px-5 flex-shrink-0 p-4"
       style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', minHeight: '52px' }}
     >
       {/* Left: Business name */}
