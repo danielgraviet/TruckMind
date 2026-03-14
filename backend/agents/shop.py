@@ -57,6 +57,11 @@ Format: [Decision] — [Evidence with numbers] ([Projected impact])
 
 Be concise. One decision per issue. No hedging."""
 
+CASHIER_SYSTEM_PROMPT = """You are the friendly cashier at {business_name}. Help customers and take their orders.
+
+MENU:
+{menu}"""
+
 AUTONOMOUS_PROMPT_TEMPLATE = """Current shop status:
 
 INVENTORY:
@@ -160,6 +165,59 @@ def periodic_review(shop_state: ShopState, client: LLMClient) -> list[ShopAction
         List of actions taken
     """
     return _periodic_review(shop_state, client)
+
+
+def handle_customer(
+    shop_state: ShopState,
+    message: str,
+    client: LLMClient,
+    customer_name: str = "Customer",
+) -> tuple[str, list[ShopAction]]:
+    """
+    Handle a customer message (order or question) through the cashier LLM.
+
+    Builds a cashier prompt with the live menu, sends to the LLM, and if the
+    customer is ordering, creates an Order and runs it through process_order().
+
+    Returns:
+        (cashier_message, list_of_actions) where actions include the order
+        itself plus any autonomous actions triggered by processing it.
+    """
+    system = CASHIER_SYSTEM_PROMPT.format(
+        business_name=shop_state.strategy.business_name,
+        menu=shop_state.active_menu_display(),
+    )
+
+    prompt = f'Customer says: "{message}"'
+
+    response = client.complete_json(
+        prompt=prompt,
+        system=system,
+        max_tokens=512,
+        temperature=0.7,
+    )
+
+    if not response.parsed_json:
+        return ("Sorry, I didn't catch that. What can I get for you?", [])
+
+    data = response.parsed_json
+    cashier_msg = data.get("message", "What can I get for you?")
+    action = data.get("action", "none")
+    actions: list[ShopAction] = []
+
+    if action == ShopActionType.TAKE_ORDER.value:
+        order_items = data.get("order_items", [])
+        if order_items:
+            order = Order(
+                id=uuid.uuid4().hex[:8],
+                timestamp=datetime.now().isoformat(),
+                customer_name=customer_name,
+                items=order_items,
+                total_price=0.0,
+            )
+            actions = process_order(shop_state, order, client)
+
+    return (cashier_msg, actions)
 
 
 def initialize_shop(strategy: Strategy, starting_cash: float = 500.0) -> ShopState:
