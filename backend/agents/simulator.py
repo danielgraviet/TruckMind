@@ -37,7 +37,7 @@ from utils.llm_client import LLMClient
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 TIER1_BATCH_SIZE = 12      # Personas per LLM call (12 × ~100 tokens each fits easily)
-TIER1_TARGET = 50          # Total personas to simulate via LLM
+TIER1_TARGET = 30          # Total personas to simulate via LLM
 SEED_PREFIX = "seed-"      # IDs starting with this are LLM-generated seeds
 
 SIMULATION_SYSTEM_PROMPT = """You are simulating realistic customer reactions to a food truck.

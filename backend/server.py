@@ -207,12 +207,34 @@ async def _simulate_generator(concept: str, location: str, mock: bool, budget: O
         strategy = await asyncio.to_thread(create_strategy, bc, client)
         yield _snapshot("strategy", strategy, [], {})
 
-        # Phase 2 — personas
+        # Phase 2 — personas (stream each one as it's created)
         yield _snapshot("personas", strategy, [], {})
-        personas_base = await asyncio.to_thread(
-            generate_personas, location, strategy, client, 100, 20
-        )
-        yield _snapshot("personas", strategy, personas_base, {})
+
+        persona_queue: asyncio.Queue = asyncio.Queue()
+        DONE_PERSONAS = object()
+
+        def on_persona(persona):
+            loop.call_soon_threadsafe(persona_queue.put_nowait, persona)
+
+        async def _gen_personas():
+            result = await asyncio.to_thread(
+                generate_personas, location, strategy, client, 100, 20,
+                on_persona=on_persona,
+            )
+            loop.call_soon_threadsafe(persona_queue.put_nowait, DONE_PERSONAS)
+            return result
+
+        persona_task = asyncio.create_task(_gen_personas())
+        personas_base = []
+
+        while True:
+            item = await persona_queue.get()
+            if item is DONE_PERSONAS:
+                break
+            personas_base.append(item)
+            yield _snapshot("personas", strategy, personas_base, {})
+
+        personas_base = await persona_task
 
         # Phase 3 — simulation
         yield _snapshot("simulation", strategy, personas_base, {})
