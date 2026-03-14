@@ -164,6 +164,27 @@ class Persona:
             "education_level": self.education_level,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Persona":
+        return cls(
+            id=d["id"],
+            name=d["name"],
+            age=d["age"],
+            occupation=d["occupation"],
+            annual_income=d["annual_income"],
+            household_size=d["household_size"],
+            neighborhood=d["neighborhood"],
+            price_sensitivity=PriceSensitivity(d["price_sensitivity"]),
+            meal_preference=MealPreference(d["meal_preference"]),
+            dietary_restrictions=d["dietary_restrictions"],
+            flavor_preferences=d["flavor_preferences"],
+            lunch_budget=d["lunch_budget"],
+            visit_likelihood=d["visit_likelihood"],
+            backstory=d["backstory"],
+            census_tract=d.get("census_tract"),
+            education_level=d.get("education_level"),
+        )
+
     def to_prompt(self) -> str:
         """Render this persona for use in an LLM prompt."""
         return (

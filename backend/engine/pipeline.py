@@ -19,7 +19,7 @@ import time
 from typing import Optional
 from models.schema import BusinessConcept, PipelineState
 from agents.strategist import create_strategy, refine_strategy
-from agents.crowd import generate_seed_personas, expand_personas, get_demographics
+from agents.crowd import generate_personas, get_demographics
 from agents.simulator import run_simulation
 from agents.shop import initialize_shop, handle_customer, check_autonomous_triggers
 from utils.llm_client import LLMClient, MockLLMClient
@@ -89,16 +89,14 @@ def run_pipeline(
     log("\n" + "=" * 60)
     log("👥 PHASE 2: THE CROWD")
     log("=" * 60)
-    log(f"Generating {num_seed_personas} seed personas via LLM...")
+    log(f"Generating {num_personas} personas ({num_seed_personas} seeds via LLM, rest expanded)...")
 
     t0 = time.time()
-    seeds = generate_seed_personas(location, state.strategy, client, num_seeds=num_seed_personas)
-    log(f"   Generated {len(seeds)} seeds in {time.time() - t0:.1f}s")
-
-    log(f"Expanding to {num_personas} total personas programmatically...")
-    t0 = time.time()
-    demographics = get_demographics(location)
-    state.personas = expand_personas(seeds, num_personas, location, demographics)
+    state.personas = generate_personas(
+        location, state.strategy, client,
+        num_personas=num_personas,
+        num_seeds=num_seed_personas,
+    )
     state.advance_to("personas")
 
     log(f"   Expanded to {len(state.personas)} personas in {time.time() - t0:.1f}s")
