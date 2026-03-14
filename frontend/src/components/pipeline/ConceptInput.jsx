@@ -11,65 +11,112 @@ export default function ConceptInput({ onRun, isRunning, mockMode, onToggleMock,
     onRun(concept.trim(), location.trim())
   }
 
+  const canSubmit = !isRunning && !!concept.trim() && !!location
+
   return (
-    <div className="relative rounded-xl p-px bg-gradient-to-b from-gray-700 to-gray-800">
-      <div className="bg-gray-900 rounded-xl p-5">
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5" htmlFor="concept">
-              Describe your concept
-            </label>
-            <textarea
-              id="concept"
-              value={concept}
-              onChange={e => setConcept(e.target.value)}
-              placeholder="e.g. Authentic Korean BBQ truck serving office workers downtown"
-              className="w-full bg-gray-800/80 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20 resize-none transition-colors"
-              rows={3}
-              disabled={isRunning}
-            />
-          </div>
-
-          <CityPicker
-            value={location}
-            onChange={setLocation}
-            disabled={isRunning}
-          />
-
-          <div className="flex items-center justify-between pt-1">
-            {/* Demo mode toggle */}
-            <button
-              type="button"
-              onClick={onToggleMock}
-              className="flex items-center gap-2 cursor-pointer select-none group"
-            >
-              <div className={`w-9 h-5 rounded-full relative transition-colors ${mockMode ? 'bg-indigo-600' : 'bg-gray-700 group-hover:bg-gray-600'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${mockMode ? 'translate-x-4' : 'translate-x-0.5'}`} />
-              </div>
-              <span className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">Demo Mode</span>
-            </button>
-
-            <button
-              type="submit"
-              disabled={!concept.trim() || !location || isRunning}
-              className="relative bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-800 disabled:text-gray-600 disabled:border-gray-700 text-white text-sm font-semibold px-6 py-2.5 rounded-lg transition-all shadow-lg shadow-indigo-900/30 hover:shadow-indigo-900/50 flex items-center gap-2"
-            >
-              {isRunning ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Running…
-                </>
-              ) : (
-                <>
-                  {buttonLabel}
-                  <span className="text-indigo-300">→</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+    <div
+      className="rounded-2xl p-6 space-y-5"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+    >
+      {/* Heading */}
+      <div>
+        <h2
+          className="text-xl font-bold text-white tracking-tight"
+          style={{ fontFamily: 'var(--font-display)' }}
+        >
+          Describe Your Food Truck
+        </h2>
+        <p
+          className="mt-1 text-sm"
+          style={{ color: 'var(--text-2)', fontFamily: 'var(--font-body)' }}
+        >
+          The AI will generate and battle-test 3 strategies, then pick the winner.
+        </p>
       </div>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Concept textarea */}
+        <div>
+          <label
+            htmlFor="concept"
+            className="block text-[10px] uppercase tracking-[0.18em] mb-2"
+            style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+          >
+            Concept
+          </label>
+          <textarea
+            id="concept"
+            value={concept}
+            onChange={e => setConcept(e.target.value)}
+            placeholder="e.g. Authentic Korean BBQ truck serving office workers downtown"
+            rows={3}
+            disabled={isRunning}
+            className="w-full rounded-xl px-4 py-3 text-sm text-white placeholder-opacity-30 resize-none focus:outline-none transition-colors"
+            style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-1)',
+              fontFamily: 'var(--font-body)',
+              caretColor: 'var(--accent)',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--border-strong)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+
+        {/* City picker */}
+        <CityPicker
+          value={location}
+          onChange={setLocation}
+          disabled={isRunning}
+        />
+
+        {/* Footer row */}
+        <div className="flex items-center justify-between pt-1">
+          {/* Demo toggle */}
+          <button
+            type="button"
+            onClick={onToggleMock}
+            className="flex items-center gap-2.5 cursor-pointer select-none group"
+          >
+            <div
+              className="w-9 h-5 rounded-full relative transition-all duration-200"
+              style={{ background: mockMode ? 'var(--accent)' : 'var(--bg-card)', border: '1px solid var(--border-strong)' }}
+            >
+              <div
+                className="absolute top-0.5 w-4 h-4 rounded-full transition-transform duration-200"
+                style={{
+                  background: mockMode ? '#0f0f0f' : 'var(--text-3)',
+                  transform: mockMode ? 'translateX(17px)' : 'translateX(1px)',
+                }}
+              />
+            </div>
+            <span
+              className="text-[11px] transition-colors"
+              style={{ color: mockMode ? 'var(--text-2)' : 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+            >
+              Demo Mode
+            </span>
+          </button>
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="relative px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-30"
+            style={{
+              background: canSubmit ? 'var(--accent)' : 'var(--bg-card)',
+              color: canSubmit ? '#0f0f0f' : 'var(--text-3)',
+              fontFamily: 'var(--font-body)',
+              boxShadow: canSubmit ? '0 0 20px var(--accent-glow)' : 'none',
+            }}
+            onMouseEnter={e => { if (canSubmit) e.currentTarget.style.boxShadow = '0 0 28px var(--accent-glow)' }}
+            onMouseLeave={e => { if (canSubmit) e.currentTarget.style.boxShadow = '0 0 20px var(--accent-glow)' }}
+          >
+            {isRunning ? 'Running…' : buttonLabel}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

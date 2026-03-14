@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Truck } from 'lucide-react'
 import PipelinePage from './pages/PipelinePage.jsx'
 import LaunchTransitionPage from './pages/LaunchTransitionPage.jsx'
 import ShopPage from './pages/ShopPage.jsx'
@@ -17,16 +16,16 @@ export default function App() {
   const handleEnterShop = () => setAppPage('shop')
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen text-white" style={{ background: 'var(--bg-base)' }}>
       {appPage === 'research' && (
-        <header className="border-b border-gray-800/60 px-6 py-4 bg-gray-950/80 backdrop-blur-sm">
+        <header className="px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
           <div className="max-w-7xl mx-auto flex items-center gap-3">
-            <Truck className="w-5 h-5 text-indigo-400" />
-            <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              TruckMind
-            </span>
-            <span className="hidden sm:block text-gray-600 text-sm ml-1">·</span>
-            <span className="hidden sm:block text-gray-500 text-xs">AI Market Simulator</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--accent)' }} />
+              <span className="w-2 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.2)' }} />
+            </div>
+            <span className="text-lg font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>TruckMind</span>
+            <span className="text-sm ml-1" style={{ color: 'var(--text-3)' }}>AI Food Truck Simulator</span>
           </div>
         </header>
       )}

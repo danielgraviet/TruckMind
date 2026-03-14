@@ -1,3 +1,80 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --bg-base:        #0f0f0f;
+  --bg-surface:     #161616;
+  --bg-card:        #1d1d1d;
+  --bg-sidebar:     #0a0a0a;
+  --border:         rgba(255, 255, 255, 0.07);
+  --border-strong:  rgba(255, 255, 255, 0.13);
+  --accent:         #c9f135;
+  --accent-dim:     rgba(201, 241, 53, 0.10);
+  --accent-glow:    rgba(201, 241, 53, 0.22);
+  --text-1:         #ffffff;
+  --text-2:         #8a8a8a;
+  --text-3:         #444444;
+  --negative:       #ff4555;
+  --positive:       #c9f135;
+  --font-display:   'Syne', system-ui, sans-serif;
+  --font-body:      'DM Sans', system-ui, sans-serif;
+  --font-mono:      'JetBrains Mono', ui-monospace, monospace;
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { font-size: 15px; }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-1);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar { width: 3px; height: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+}
+
+@layer utilities {
+  .font-display { font-family: var(--font-display); }
+  .font-body    { font-family: var(--font-body); }
+  .font-data    { font-family: var(--font-mono); }
+
+  .bg-base    { background-color: var(--bg-base); }
+  .bg-surface { background-color: var(--bg-surface); }
+  .bg-card    { background-color: var(--bg-card); }
+
+  .border-subtle { border-color: var(--border); }
+
+  .text-muted  { color: var(--text-2); }
+  .text-faint  { color: var(--text-3); }
+  .text-accent { color: var(--accent); }
+
+  .accent-pill {
+    background: var(--accent);
+    color: #0f0f0f;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.6875rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .card-surface {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 0 1px var(--accent-glow), 0 4px 24px var(--accent-glow);
+  }
+}

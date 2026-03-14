@@ -6,7 +6,7 @@ import ReactionBoard   from '../components/pipeline/ReactionBoard.jsx'
 import SimulationStats from '../components/pipeline/SimulationStats.jsx'
 import PhaseIndicator  from '../components/shared/PhaseIndicator.jsx'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Users, Zap, Trophy, Settings } from 'lucide-react'
+import { Users, Zap, Trophy } from 'lucide-react'
 
 const LAUNCH_DELAY = 20 // seconds to review before auto-launch
 
@@ -15,12 +15,24 @@ function EvaluatingBanner() {
     <motion.div
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3"
+      className="rounded-2xl p-4 flex items-center gap-3"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
     >
-      <Settings className="w-4 h-4 text-gray-400 animate-spin" />
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 animate-spin"
+        style={{ background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(201,241,53,0.2)' }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </div>
       <div>
-        <div className="text-sm font-semibold text-white">Evaluating strategies…</div>
-        <div className="text-xs text-gray-500 mt-0.5">Scoring all 3 by interest rate, revenue, sentiment & margin</div>
+        <div className="text-sm font-semibold text-white" style={{ fontFamily: 'var(--font-display)' }}>
+          Evaluating strategies…
+        </div>
+        <div className="text-xs mt-0.5" style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}>
+          Scoring all 3 by interest rate, revenue, sentiment & margin
+        </div>
       </div>
     </motion.div>
   )
@@ -33,43 +45,59 @@ function LaunchCountdown({ seconds, paused, total, onLaunch, onPause, onResume }
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.4 }}
-      className="bg-gray-900 border border-gray-800 rounded-xl p-4"
+      className="rounded-2xl p-4"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
     >
       {/* Progress bar */}
-      <div className="h-1 bg-gray-800 rounded-full mb-3 overflow-hidden">
+      <div className="h-0.5 rounded-full mb-3.5 overflow-hidden" style={{ background: 'var(--bg-card)' }}>
         <motion.div
-          className="h-full bg-indigo-500 rounded-full origin-left"
+          className="h-full rounded-full origin-left"
+          style={{ background: 'var(--accent)', boxShadow: '0 0 8px var(--accent-glow)' }}
           animate={{ width: `${pct}%` }}
           transition={{ duration: 0.9, ease: 'linear' }}
         />
       </div>
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-400">
+        <p className="text-sm" style={{ color: 'var(--text-2)', fontFamily: 'var(--font-body)' }}>
           {paused
             ? 'Auto-launch paused — review as long as you need.'
-            : <span>Launching in <span className="text-white font-semibold tabular-nums">{seconds}s</span>…</span>
+            : <span>Launching in <span className="font-semibold tabular-nums" style={{ color: 'var(--text-1)', fontFamily: 'var(--font-mono)' }}>{seconds}s</span>…</span>
           }
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {paused ? (
             <button
               onClick={onResume}
-              className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="text-xs transition-colors"
+              style={{ color: 'var(--accent)', fontFamily: 'var(--font-body)' }}
+              onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >
               Resume countdown
             </button>
           ) : (
             <button
               onClick={onPause}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              className="text-xs transition-colors"
+              style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+              onMouseEnter={e => e.currentTarget.style.color = 'var(--text-2)'}
+              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
             >
               Keep reviewing
             </button>
           )}
           <button
             onClick={onLaunch}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs font-semibold px-4 py-1.5 rounded-lg transition-all"
+            style={{
+              background: 'var(--accent)',
+              color: '#0f0f0f',
+              fontFamily: 'var(--font-body)',
+              boxShadow: '0 0 16px var(--accent-glow)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 24px var(--accent-glow)'}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 16px var(--accent-glow)'}
           >
             Launch now →
           </button>
@@ -137,7 +165,7 @@ export default function PipelinePage({ onLaunch }) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
       {/* ── Idle: hero + concept input ── */}
       {isIdle && (
@@ -149,13 +177,16 @@ export default function PipelinePage({ onLaunch }) {
             transition={{ duration: 0.4 }}
             className="text-center space-y-3 pt-4"
           >
-            <h1 className="text-3xl font-bold tracking-tight text-white">
+            <h1
+              className="text-3xl font-bold tracking-tight text-white"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
               Know your market{' '}
-              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
+              <span style={{ color: 'var(--accent)' }}>
                 before you spend a dime
               </span>
             </h1>
-            <p className="text-gray-400 text-sm max-w-md mx-auto">
+            <p className="text-sm max-w-md mx-auto" style={{ color: 'var(--text-2)', fontFamily: 'var(--font-body)' }}>
               Describe your concept. TruckMind builds your customer base from real census data,
               tests three strategies, and picks the winner — autonomously.
             </p>
@@ -163,13 +194,19 @@ export default function PipelinePage({ onLaunch }) {
             {/* Feature pills */}
             <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
               {[
-                { icon: <Users className="w-3.5 h-3.5" />,   label: '100 census-grounded personas' },
-                { icon: <Zap   className="w-3.5 h-3.5" />,   label: '3 strategies tested' },
-                { icon: <Trophy className="w-3.5 h-3.5" />,  label: 'AI picks the winner' },
+                { icon: <Users className="w-3.5 h-3.5" />,  label: '100 census-grounded personas' },
+                { icon: <Zap   className="w-3.5 h-3.5" />,  label: '3 strategies tested' },
+                { icon: <Trophy className="w-3.5 h-3.5" />, label: 'AI picks the winner' },
               ].map(({ icon, label }) => (
                 <span
                   key={label}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-800/80 border border-gray-700/60 text-gray-300 text-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border-strong)',
+                    color: 'var(--text-2)',
+                    fontFamily: 'var(--font-body)',
+                  }}
                 >
                   {icon}{label}
                 </span>
@@ -200,11 +237,23 @@ export default function PipelinePage({ onLaunch }) {
           <div className="flex items-center justify-between">
             <PhaseIndicator phase={phase} />
             {isRunning ? (
-              <button onClick={stop} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              <button
+                onClick={stop}
+                className="text-xs transition-colors"
+                style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-2)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
+              >
                 Stop
               </button>
             ) : (
-              <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              <button
+                onClick={reset}
+                className="text-xs transition-colors"
+                style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--text-2)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text-3)'}
+              >
                 ← New concept
               </button>
             )}

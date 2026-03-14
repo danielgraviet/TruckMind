@@ -37,9 +37,11 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 0 }) {
 
 function Metric({ label, children }) {
   return (
-    <div className="bg-gray-800 rounded-lg px-3 py-2.5">
-      <div className="text-xs text-gray-500 mb-0.5">{label}</div>
-      <div className="text-lg font-bold text-white">{children}</div>
+    <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+      <div className="text-[9.5px] uppercase tracking-[0.18em] mb-1" style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}>
+        {label}
+      </div>
+      <div className="text-lg font-bold text-white" style={{ fontFamily: 'var(--font-display)' }}>{children}</div>
     </div>
   )
 }
@@ -52,8 +54,13 @@ function SentimentBar({ dist }) {
 
   return (
     <div>
-      <div className="text-xs text-gray-500 mb-1.5">Sentiment Distribution</div>
-      <div className="flex h-2 rounded-full overflow-hidden">
+      <div
+        className="text-[9.5px] uppercase tracking-[0.18em] mb-1.5"
+        style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+      >
+        Sentiment Distribution
+      </div>
+      <div className="flex h-1.5 rounded-full overflow-hidden">
         {SENTIMENTS.map(s => {
           const pct = ((dist[s] ?? 0) / total) * 100
           return pct > 0 ? (
@@ -65,9 +72,9 @@ function SentimentBar({ dist }) {
           ) : null
         })}
       </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
         {SENTIMENTS.map(s => (dist[s] > 0) && (
-          <span key={s} className="text-xs text-gray-500">
+          <span key={s} className="text-[10px]" style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}>
             <span style={{ color: SENTIMENT_COLORS[s] }}>●</span> {s} {dist[s]}
           </span>
         ))}
@@ -78,37 +85,19 @@ function SentimentBar({ dist }) {
 
 function StatsSkeleton() {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4 animate-pulse">
-      {/* Header */}
-      <div className="h-3 bg-gray-800 rounded w-1/3" />
-      {/* 2×2 metrics */}
+    <div
+      className="rounded-2xl p-5 space-y-4 animate-pulse"
+      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
+    >
+      <div className="h-3 rounded w-1/3" style={{ background: 'var(--bg-card)' }} />
       <div className="grid grid-cols-2 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-gray-800 rounded-lg px-3 py-2.5 space-y-1.5">
-            <div className="h-3 bg-gray-700 rounded w-2/3" />
-            <div className="h-6 bg-gray-700 rounded w-1/2" />
+          <div key={i} className="rounded-xl px-3 py-2.5 space-y-1.5" style={{ background: 'var(--bg-card)' }}>
+            <div className="h-3 rounded w-2/3" style={{ background: 'rgba(255,255,255,0.04)' }} />
+            <div className="h-5 rounded w-1/2" style={{ background: 'rgba(255,255,255,0.04)' }} />
           </div>
         ))}
       </div>
-      {/* Sentiment bar */}
-      <div className="space-y-1.5">
-        <div className="h-3 bg-gray-800 rounded w-1/3" />
-        <div className="h-2 bg-gray-800 rounded-full" />
-        <div className="flex gap-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-3 bg-gray-800 rounded w-12" />
-          ))}
-        </div>
-      </div>
-      {/* Strengths + Concerns */}
-      {[0, 1].map(section => (
-        <div key={section} className="space-y-1.5">
-          <div className="h-3 bg-gray-800 rounded w-1/5" />
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-3 bg-gray-800 rounded" style={{ width: `${70 + i * 8}%` }} />
-          ))}
-        </div>
-      ))}
     </div>
   )
 }
@@ -135,9 +124,13 @@ export default function SimulationStats({ stats, phase }) {
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 40, opacity: 0 }}
           transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-          className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4"
+          className="rounded-2xl p-5 space-y-4"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}
         >
-          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+          <h3
+            className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+            style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+          >
             Simulation Results
           </h3>
 
@@ -162,10 +155,19 @@ export default function SimulationStats({ stats, phase }) {
 
           {stats.topStrengths?.length > 0 && (
             <div>
-              <div className="text-xs text-gray-500 mb-1.5">Strengths</div>
+              <div
+                className="text-[9.5px] uppercase tracking-[0.18em] mb-1.5"
+                style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+              >
+                Strengths
+              </div>
               <ul className="space-y-1">
                 {stats.topStrengths.slice(0, 3).map((s, i) => (
-                  <li key={i} className="text-xs text-emerald-400 flex gap-1.5 items-start">
+                  <li
+                    key={i}
+                    className="text-xs flex gap-1.5 items-start"
+                    style={{ color: 'var(--accent)', fontFamily: 'var(--font-body)' }}
+                  >
                     <span className="shrink-0 mt-px">+</span>
                     <span>{s}</span>
                   </li>
@@ -176,10 +178,19 @@ export default function SimulationStats({ stats, phase }) {
 
           {stats.topConcerns?.length > 0 && (
             <div>
-              <div className="text-xs text-gray-500 mb-1.5">Concerns</div>
+              <div
+                className="text-[9.5px] uppercase tracking-[0.18em] mb-1.5"
+                style={{ color: 'var(--text-3)', fontFamily: 'var(--font-body)' }}
+              >
+                Concerns
+              </div>
               <ul className="space-y-1">
                 {stats.topConcerns.slice(0, 3).map((c, i) => (
-                  <li key={i} className="text-xs text-orange-400 flex gap-1.5 items-start">
+                  <li
+                    key={i}
+                    className="text-xs flex gap-1.5 items-start"
+                    style={{ color: 'var(--negative)', fontFamily: 'var(--font-body)' }}
+                  >
                     <span className="shrink-0 mt-px">–</span>
                     <span>{c}</span>
                   </li>
