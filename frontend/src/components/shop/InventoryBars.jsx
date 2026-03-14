@@ -2,14 +2,14 @@ import { motion } from 'framer-motion'
 
 function barColor(pct) {
   if (pct <= 0) return 'bg-gray-600'
-  if (pct < 25) return 'bg-rose-500'
-  if (pct < 50) return 'bg-amber-500'
+  if (pct < 20) return 'bg-rose-500'
+  if (pct <= 50) return 'bg-amber-500'
   return 'bg-emerald-500'
 }
 
 function badge(pct) {
-  if (pct <= 0) return { label: 'OUT', cls: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
-  if (pct < 25) return { label: 'LOW', cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' }
+  if (pct <= 0) return { label: 'OUT', cls: 'bg-rose-500/20 text-rose-400 border-rose-500/30 animate-pulse' }
+  if (pct < 20) return { label: 'LOW STOCK', cls: 'bg-amber-500/20 text-amber-400 border-amber-500/30' }
   return null
 }
 

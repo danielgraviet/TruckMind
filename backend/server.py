@@ -31,7 +31,9 @@ from models.schema import BusinessConcept
 from agents.strategist import create_strategy, create_strategy_options
 from agents.crowd import generate_personas, get_demographics
 from agents.simulator import run_simulation
-from agents.shop import initialize_shop, handle_customer
+from agents.shop import initialize_shop, handle_customer, process_order
+from engine.customer_gen import generate_customer, get_trickle_interval
+from models.schema import ShopRules, Order
 from utils.llm_client import LLMClient, MockLLMClient
 
 
@@ -65,6 +67,11 @@ class PipelineRequest(BaseModel):
 class OrderRequest(BaseModel):
     message: str
     customer_name: Optional[str] = "Customer"
+    channel: Optional[str] = "walk_up"
+
+
+class ScenarioRequest(BaseModel):
+    scenario: str  # "rush", "angry_customer", "stock_out"
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -442,7 +449,8 @@ async def place_order(req: OrderRequest):
         )
 
     cashier_msg, actions = await asyncio.to_thread(
-        handle_customer, shop, req.message, client, req.customer_name or "Customer"
+        handle_customer, shop, req.message, client, req.customer_name or "Customer",
+        req.channel or "walk_up"
     )
 
     # Find the order object from the last action (if an order was placed)
@@ -527,3 +535,191 @@ async def simulate_rush():
         "results": results,
         "shop_state": shop.to_dict(),
     }
+
+
+# ─── Shop Rules Endpoints ───────────────────────────────────────────────────
+
+@app.get("/api/shop/rules")
+async def get_shop_rules():
+    """Return current shop rules as JSON."""
+    shop = active_shop.get("state")
+    if shop is None:
+        # Return default rules even if no shop is active
+        return ShopRules().to_dict()
+    return shop.rules.to_dict()
+
+
+@app.put("/api/shop/rules")
+async def update_shop_rules(rules_data: dict):
+    """Update shop rules from JSON body."""
+    shop = active_shop.get("state")
+    if shop is None:
+        raise HTTPException(status_code=409, detail="No active shop. Run a pipeline first.")
+
+    try:
+        new_rules = ShopRules.from_dict(rules_data)
+        shop.rules = new_rules
+        return {"status": "ok", "rules": new_rules.to_dict()}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid rules data: {exc}")
+
+
+# ─── Shop Event SSE Stream ──────────────────────────────────────────────────
+
+# Shared queue for shop events — subscribers get events pushed here
+_shop_event_queues: list[asyncio.Queue] = []
+
+
+def _broadcast_shop_event(event: str, data: dict):
+    """Push an event to all connected SSE subscribers."""
+    msg = _fmt(event, data)
+    for q in _shop_event_queues:
+        try:
+            q.put_nowait(msg)
+        except asyncio.QueueFull:
+            pass  # Drop events for slow consumers
+
+
+async def _shop_stream_generator():
+    """Async generator that yields SSE events for the shop stream."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    _shop_event_queues.append(queue)
+    try:
+        # Send initial state
+        shop = active_shop.get("state")
+        if shop:
+            yield _fmt("shop_state", shop.to_dict())
+
+        while True:
+            msg = await queue.get()
+            yield msg
+    finally:
+        _shop_event_queues.remove(queue)
+
+
+@app.get("/api/shop/stream")
+async def shop_stream():
+    """SSE stream of all shop events (state changes, orders, autonomous actions)."""
+    return StreamingResponse(
+        _shop_stream_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ─── Scenario Trigger Endpoint ──────────────────────────────────────────────
+
+@app.post("/api/shop/trigger-scenario")
+async def trigger_scenario(req: ScenarioRequest):
+    """
+    Trigger predefined scenarios for demo purposes.
+    Scenarios: "rush", "angry_customer", "stock_out"
+    """
+    shop = active_shop.get("state")
+    client = active_shop.get("client")
+
+    if shop is None or client is None:
+        raise HTTPException(status_code=409, detail="No active shop. Run a pipeline first.")
+
+    if req.scenario == "rush":
+        # Generate 15-20 rapid customers using customer_gen
+        active_items = [item.name for item in shop.get_active_menu()]
+        if not active_items:
+            raise HTTPException(status_code=409, detail="Menu is empty.")
+
+        rng = random.Random()
+        num_orders = random.randint(15, 20)
+        results = []
+
+        for i in range(num_orders):
+            customer = generate_customer(
+                strategy=shop.strategy,
+                shop_state=shop,
+                channel="walk_up",
+                rng=rng,
+            )
+            cashier_msg, actions = await asyncio.to_thread(
+                handle_customer, shop, customer.opening_message, client,
+                customer.name, customer.channel
+            )
+
+            result = {
+                "customer": customer.to_dict(),
+                "cashier_message": cashier_msg,
+                "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
+            }
+            results.append(result)
+            _broadcast_shop_event("order", result)
+            await asyncio.sleep(0.05)
+
+        return {
+            "scenario": "rush",
+            "orders_processed": len(results),
+            "results": results,
+            "shop_state": shop.to_dict(),
+        }
+
+    elif req.scenario == "angry_customer":
+        # Generate an escalation customer
+        customer = generate_customer(
+            strategy=shop.strategy,
+            shop_state=shop,
+            channel="escalation",
+        )
+        cashier_msg, actions = await asyncio.to_thread(
+            handle_customer, shop, customer.opening_message, client,
+            customer.name, customer.channel
+        )
+
+        result = {
+            "customer": customer.to_dict(),
+            "cashier_message": cashier_msg,
+            "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
+        }
+        _broadcast_shop_event("escalation", result)
+
+        return {
+            "scenario": "angry_customer",
+            "result": result,
+            "shop_state": shop.to_dict(),
+        }
+
+    elif req.scenario == "stock_out":
+        # Drain inventory of a random item to trigger sold-out logic
+        active_items = [inv for inv in shop.inventory if not inv.is_out]
+        if not active_items:
+            raise HTTPException(status_code=409, detail="All items already out of stock.")
+
+        target = random.choice(active_items)
+        target.quantity_remaining = 0
+
+        # Trigger a single order to activate the sold-out trigger
+        customer = generate_customer(
+            strategy=shop.strategy,
+            shop_state=shop,
+            channel="walk_up",
+        )
+        cashier_msg, actions = await asyncio.to_thread(
+            handle_customer, shop, customer.opening_message, client,
+            customer.name, customer.channel
+        )
+
+        result = {
+            "drained_item": target.menu_item_name,
+            "customer": customer.to_dict(),
+            "cashier_message": cashier_msg,
+            "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
+        }
+        _broadcast_shop_event("stock_out", result)
+
+        return {
+            "scenario": "stock_out",
+            "result": result,
+            "shop_state": shop.to_dict(),
+        }
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown scenario: '{req.scenario}'. Must be 'rush', 'angry_customer', or 'stock_out'.",
+        )

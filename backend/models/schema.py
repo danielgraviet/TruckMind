@@ -373,6 +373,12 @@ class ShopAction:
     description: str                    # human-readable explanation
     details: dict = field(default_factory=dict)  # action-specific payload
     autonomous: bool = True             # was this decided by the AI without human input?
+    context_gathered: list = field(default_factory=list)   # list of str - what data AI looked at
+    options_considered: list = field(default_factory=list)  # list of dict - alternatives weighed
+    reasoning: str = ""                                      # full AI reasoning text
+    confidence: float = 1.0                                  # 0.0-1.0
+    escalated: bool = False                                  # was this escalated?
+    channel: str = "operations"                              # operations, walk_up, text_order, escalation
 
     def to_dict(self) -> dict:
         return {
@@ -380,7 +386,48 @@ class ShopAction:
             "description": self.description,
             "details": self.details,
             "autonomous": self.autonomous,
+            "context_gathered": self.context_gathered,
+            "options_considered": self.options_considered,
+            "reasoning": self.reasoning,
+            "confidence": self.confidence,
+            "escalated": self.escalated,
+            "channel": self.channel,
         }
+
+
+@dataclass
+class ShopRules:
+    max_markup_pct: float = 0.25
+    min_margin_multiplier: float = 1.10
+    max_restock_spend_pct: float = 0.50
+    min_cash_reserve: float = 50.0
+    max_actions_per_cycle: int = 2
+    cooldown_orders: int = 8
+    periodic_review_interval: int = 5
+    min_orders_for_trends: int = 8
+    category_inventory: dict = field(default_factory=lambda: {
+        "entree": {"qty": 10, "threshold": 4, "max": 50},
+        "side":   {"qty": 8,  "threshold": 3, "max": 30},
+        "drink":  {"qty": 15, "threshold": 4, "max": 50},
+        "dessert":{"qty": 6,  "threshold": 3, "max": 25},
+    })
+
+    def to_dict(self) -> dict:
+        return {
+            "max_markup_pct": self.max_markup_pct,
+            "min_margin_multiplier": self.min_margin_multiplier,
+            "max_restock_spend_pct": self.max_restock_spend_pct,
+            "min_cash_reserve": self.min_cash_reserve,
+            "max_actions_per_cycle": self.max_actions_per_cycle,
+            "cooldown_orders": self.cooldown_orders,
+            "periodic_review_interval": self.periodic_review_interval,
+            "min_orders_for_trends": self.min_orders_for_trends,
+            "category_inventory": self.category_inventory,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ShopRules':
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
@@ -396,6 +443,7 @@ class ShopState:
     total_orders: int = 0
     cash_on_hand: float = 500.0         # starting cash
     trigger_cooldowns: dict[str, int] = field(default_factory=dict)  # "trigger:item" → order count at last fire
+    rules: ShopRules = field(default_factory=ShopRules)
 
     def get_active_menu(self) -> list[MenuItem]:
         """Menu items currently available (in stock + not removed)."""
@@ -441,7 +489,33 @@ class ShopState:
             "total_revenue": round(self.total_revenue, 2),
             "total_orders": self.total_orders,
             "cash_on_hand": round(self.cash_on_hand, 2),
+            "rules": self.rules.to_dict(),
         }
+
+    @classmethod
+    def from_dict(cls, data: dict, strategy: Strategy) -> 'ShopState':
+        """Reconstruct ShopState from a dict. Requires the Strategy object separately."""
+        rules = ShopRules.from_dict(data["rules"]) if "rules" in data else ShopRules()
+        inventory = [
+            InventoryItem(
+                menu_item_name=i["menu_item_name"],
+                quantity_remaining=i["quantity_remaining"],
+                restock_threshold=i["restock_threshold"],
+                max_capacity=i["max_capacity"],
+                unit_cost=i["unit_cost"],
+            )
+            for i in data.get("inventory", [])
+        ]
+        return cls(
+            strategy=strategy,
+            inventory=inventory,
+            current_prices=data.get("current_prices", {}),
+            removed_items=data.get("removed_items", []),
+            total_revenue=data.get("total_revenue", 0.0),
+            total_orders=data.get("total_orders", 0),
+            cash_on_hand=data.get("cash_on_hand", 500.0),
+            rules=rules,
+        )
 
 
 # =============================================================================
