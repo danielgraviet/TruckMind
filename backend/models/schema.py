@@ -442,8 +442,10 @@ class ShopState:
     current_prices: dict[str, float] = field(default_factory=dict)  # overrides
     removed_items: list[str] = field(default_factory=list)
     total_revenue: float = 0.0
+    total_cogs: float = 0.0
     total_orders: int = 0
     cash_on_hand: float = 500.0         # starting cash
+    sales_by_item: dict[str, int] = field(default_factory=dict)
     trigger_cooldowns: dict[str, int] = field(default_factory=dict)  # "trigger:item" → order count at last fire
     rules: ShopRules = field(default_factory=ShopRules)
 
@@ -451,14 +453,16 @@ class ShopState:
         return {item.name: item for item in self.strategy.menu}
 
     def total_cogs_sold(self) -> float:
+        if self.total_cogs > 0:
+            return self.total_cogs
+
         menu_map = self._menu_item_map()
-        total = 0.0
-        for order in self.orders:
-            for item_name in order.items:
-                item = menu_map.get(item_name)
-                if item:
-                    total += item.cost_to_make
-        return total
+        return sum(
+            menu_map[item_name].cost_to_make
+            for order in self.orders
+            for item_name in order.items
+            if item_name in menu_map
+        )
 
     def gross_profit(self) -> float:
         return self.total_revenue - self.total_cogs_sold()
@@ -539,6 +543,15 @@ class ShopState:
             lines.append("")
         return "\n".join(lines)
 
+    def compact_menu_display(self) -> str:
+        """Compact menu optimized for order parsing prompts."""
+        lines = []
+        for item in self.get_active_menu():
+            price = self.get_current_price(item.name)
+            tags = f" [{', '.join(item.tags)}]" if item.tags else ""
+            lines.append(f"- {item.name}: ${price:.2f}{tags}")
+        return "\n".join(lines)
+
     def to_dict(self) -> dict:
         total_cogs = self.total_cogs_sold()
         gross_profit = self.gross_profit()
@@ -590,8 +603,10 @@ class ShopState:
             current_prices=data.get("current_prices", {}),
             removed_items=data.get("removed_items", []),
             total_revenue=data.get("total_revenue", 0.0),
+            total_cogs=data.get("total_cogs", 0.0),
             total_orders=data.get("total_orders", 0),
             cash_on_hand=data.get("cash_on_hand", 500.0),
+            sales_by_item=data.get("sales_by_item", {}),
             rules=rules,
         )
 

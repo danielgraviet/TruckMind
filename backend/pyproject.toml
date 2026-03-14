@@ -1,14 +1,16 @@
 [project]
 name = "truckmind"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "TruckMind backend"
 requires-python = ">=3.13"
 dependencies = [
     "anthropic>=0.84.0",
     "fastapi>=0.135.1",
     "httpx>=0.28.1",
-    "uvicorn[standard]",
     "python-dotenv",
     "requests",
+    "uvicorn[standard]",
 ]
+
+[tool.uv]
+package = false

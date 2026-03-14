@@ -42,16 +42,47 @@ Format: [Decision] — [Evidence with numbers] ([Projected impact])
 Be concise. One decision per issue. No hedging."""
 
 CASHIER_SYSTEM_PROMPTS = {
-    "walk_up": "You are a friendly, quick food truck cashier at {business_name}. Keep responses under 2 sentences.\n\nMENU:\n{menu}",
-    "text_order": "You are handling SMS orders for {business_name}. Be concise, include estimated wait time.\n\nMENU:\n{menu}",
-    "escalation": "You are handling a difficult customer complaint at {business_name}. Be empathetic, explain policies clearly, offer reasonable compensation within rules.\n\nMENU:\n{menu}",
+    "walk_up": """You are a fast cashier for {business_name}.
+Return JSON only with keys: message, action, order_items.
+Valid action values: take_order, none.
+Keep message under 18 words.
+
+MENU:
+{menu}""",
+    "text_order": """You are handling SMS orders for {business_name}.
+Return JSON only with keys: message, action, order_items.
+Valid action values: take_order, none.
+Keep message under 22 words and include a short ETA if taking an order.
+
+MENU:
+{menu}""",
+    "escalation": """You are handling a customer complaint for {business_name}.
+Return JSON only with keys: message, action, order_items.
+Use action=none unless the customer clearly places an order.
+Keep message empathetic and under 24 words.
+
+MENU:
+{menu}""",
 }
 
 # Legacy default prompt (used when channel not specified or is "operations")
-CASHIER_SYSTEM_PROMPT = """You are the friendly cashier at {business_name}. Help customers and take their orders.
+CASHIER_SYSTEM_PROMPT = """You are the friendly cashier at {business_name}.
+Return JSON only with keys: message, action, order_items.
+Valid action values: take_order, none.
 
 MENU:
 {menu}"""
+
+_ORDER_HINTS = (
+    "can i get", "i'd like", "i would like", "i want", "i'll have", "i will have",
+    "give me", "order", "please", "one ", "two ", "three ", "hi i'd like",
+)
+_MENU_HINTS = ("menu", "what do you have", "what's good", "whats good", "recommend", "special")
+_GREETING_HINTS = ("hi", "hello", "hey")
+_STOPWORDS = {"the", "and", "with", "please", "order", "want", "have", "like", "get", "can"}
+_NUMBER_WORDS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+}
 
 AUTONOMOUS_PROMPT_TEMPLATE = """Current shop status:
 
@@ -116,10 +147,19 @@ def process_order(shop_state: ShopState, order: Order, client: LLMClient) -> lis
     )
 
     # 3. Update state
+    order_cogs = 0.0
+    for item_name in valid_items:
+        menu_item = _get_menu_item(shop_state, item_name)
+        if menu_item:
+            order_cogs += menu_item.cost_to_make
+
     shop_state.orders.append(order)
     shop_state.total_orders += 1
     shop_state.total_revenue += order.total_price
+    shop_state.total_cogs += order_cogs
     shop_state.cash_on_hand += order.total_price
+    for item_name in valid_items:
+        shop_state.sales_by_item[item_name] = shop_state.sales_by_item.get(item_name, 0) + 1
 
     # Decrement inventory
     for item_name in valid_items:
@@ -182,16 +222,20 @@ def handle_customer(
         (cashier_message, list_of_actions) where actions include the order
         itself plus any autonomous actions triggered by processing it.
     """
+    fast_result = _fast_handle_customer(shop_state, message, customer_name, channel, client)
+    if fast_result is not None:
+        return fast_result
+
     # Select the system prompt based on channel
     if channel in CASHIER_SYSTEM_PROMPTS:
         system = CASHIER_SYSTEM_PROMPTS[channel].format(
             business_name=shop_state.strategy.business_name,
-            menu=shop_state.active_menu_display(),
+            menu=shop_state.compact_menu_display(),
         )
     else:
         system = CASHIER_SYSTEM_PROMPT.format(
             business_name=shop_state.strategy.business_name,
-            menu=shop_state.active_menu_display(),
+            menu=shop_state.compact_menu_display(),
         )
 
     prompt = f'Customer says: "{message}"'
@@ -199,8 +243,8 @@ def handle_customer(
     response = client.complete_json(
         prompt=prompt,
         system=system,
-        max_tokens=512,
-        temperature=0.7,
+        max_tokens=128,
+        temperature=0.2,
     )
 
     if not response.parsed_json:
@@ -228,6 +272,118 @@ def handle_customer(
                 a.channel = channel
 
     return (cashier_msg, actions)
+
+
+def _normalize_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _extract_quantity(prefix: str) -> int:
+    tokens = prefix.strip().split()
+    if not tokens:
+        return 1
+
+    last = tokens[-1]
+    if last.isdigit():
+        return max(1, min(int(last), 5))
+    return _NUMBER_WORDS.get(last, 1)
+
+
+def _match_order_items(shop_state: ShopState, message: str) -> list[str]:
+    normalized_message = _normalize_text(message)
+    active_menu = shop_state.get_active_menu()
+    matches: list[tuple[int, int, str]] = []
+
+    for item in active_menu:
+        normalized_name = _normalize_text(item.name)
+        if not normalized_name:
+            continue
+
+        for match in re.finditer(rf"\b{re.escape(normalized_name)}\b", normalized_message):
+            quantity = _extract_quantity(normalized_message[:match.start()])
+            matches.append((match.start(), quantity, item.name))
+
+    if matches:
+        ordered: list[str] = []
+        for _, quantity, item_name in sorted(matches):
+            ordered.extend([item_name] * quantity)
+        return ordered
+
+    message_tokens = {token for token in normalized_message.split() if len(token) > 3 and token not in _STOPWORDS}
+    if not message_tokens:
+        return []
+
+    candidates = []
+    for item in active_menu:
+        item_tokens = {
+            token for token in _normalize_text(item.name).split()
+            if len(token) > 3 and token not in _STOPWORDS
+        }
+        overlap = len(item_tokens & message_tokens)
+        if overlap > 0:
+            candidates.append((overlap, item.name))
+
+    if len(candidates) == 1:
+        return [candidates[0][1]]
+
+    candidates.sort(reverse=True)
+    if len(candidates) >= 2 and candidates[0][0] >= 2 and candidates[0][0] > candidates[1][0]:
+        return [candidates[0][1]]
+
+    return []
+
+
+def _format_fast_menu_reply(shop_state: ShopState) -> str:
+    preview = ", ".join(item.name for item in shop_state.get_active_menu()[:4])
+    if not preview:
+        return "We are currently sold out."
+    return f"We have {preview}. What can I get for you?"
+
+
+def _fast_handle_customer(
+    shop_state: ShopState,
+    message: str,
+    customer_name: str,
+    channel: str,
+    client: LLMClient,
+) -> Optional[tuple[str, list[ShopAction]]]:
+    lower = message.lower().strip()
+    normalized = _normalize_text(message)
+
+    if channel == "escalation":
+        return (
+            "I'm sorry about that. Tell me what happened and I'll help fix it.",
+            [],
+        )
+
+    matched_items = _match_order_items(shop_state, message)
+    if matched_items:
+        order = Order(
+            id=uuid.uuid4().hex[:8],
+            timestamp=datetime.now().isoformat(),
+            customer_name=customer_name,
+            items=matched_items,
+            total_price=0.0,
+            channel=channel,
+        )
+        actions = process_order(shop_state, order, client)
+        total = order.total_price
+        item_summary = ", ".join(matched_items[:3])
+        if len(matched_items) > 3:
+            item_summary += f" +{len(matched_items) - 3} more"
+        eta = " Ready in about 8 minutes." if channel == "text_order" else ""
+        return (f"Got it: {item_summary} for ${total:.2f}.{eta}".strip(), actions)
+
+    if any(hint in lower for hint in _MENU_HINTS):
+        return (_format_fast_menu_reply(shop_state), [])
+
+    if normalized in _GREETING_HINTS or any(lower.startswith(hint) for hint in _GREETING_HINTS):
+        return (_format_fast_menu_reply(shop_state), [])
+
+    if any(hint in lower for hint in _ORDER_HINTS):
+        return (f"I can help with that. {_format_fast_menu_reply(shop_state)}", [])
+
+    return None
 
 
 def initialize_shop(strategy: Strategy, starting_cash: float = 500.0, rules: Optional[ShopRules] = None) -> ShopState:
@@ -261,7 +417,7 @@ def _evaluate_fast_triggers(shop_state: ShopState, client: LLMClient) -> list[Sh
     """
     Called after every order. Only checks urgent triggers:
     1. Sold Out -- auto-remove (exempt from action cap)
-    2. Low Stock -- LLM decides restock or ride it out
+    2. Low Stock -- deterministic restock
     """
     actions = []
     rules = shop_state.rules
@@ -291,14 +447,7 @@ def _evaluate_fast_triggers(shop_state: ShopState, client: LLMClient) -> list[Sh
             if not _can_trigger(shop_state, key, rules.cooldown_orders):
                 continue
 
-            restock_cost = inv.unit_cost * (inv.max_capacity - inv.quantity_remaining)
-            action = _make_autonomous_decision(
-                shop_state, client,
-                trigger=f"'{inv.menu_item_name}' is running low ({inv.quantity_remaining} remaining, "
-                        f"threshold is {inv.restock_threshold}). "
-                        f"Full restock would cost ${restock_cost:.2f}. "
-                        f"We have ${shop_state.cash_on_hand:.2f} cash on hand."
-            )
+            action = _build_low_stock_action(shop_state, inv)
             if action:
                 _apply_action(shop_state, action)
                 actions.append(action)
@@ -527,14 +676,7 @@ def _periodic_review(shop_state: ShopState, client: LLMClient) -> list[ShopActio
     if shop_state.cash_on_hand < rules.min_cash_reserve:
         key = "cash_crisis"
         if _can_trigger(shop_state, key, 15):
-            action = _make_autonomous_decision(
-                shop_state, client,
-                trigger=f"CASH CRISIS: Only ${shop_state.cash_on_hand:.2f} on hand "
-                        f"(minimum reserve is ${rules.min_cash_reserve:.2f}). "
-                        f"Total revenue: ${shop_state.total_revenue:.2f}, "
-                        f"total orders: {shop_state.total_orders}. "
-                        f"Consider cutting an underperformer or raising prices."
-            )
+            action = _build_cash_crisis_action(shop_state)
             if action:
                 _apply_action(shop_state, action)
                 actions.append(action)
@@ -583,10 +725,7 @@ def _get_items_not_ordered_recently(shop_state: ShopState, last_n: int) -> list[
 
 def _get_total_item_orders(shop_state: ShopState, item_name: str) -> int:
     """Get lifetime order count for an item."""
-    count = 0
-    for order in shop_state.orders:
-        count += order.items.count(item_name)
-    return count
+    return shop_state.sales_by_item.get(item_name, 0)
 
 
 def _get_menu_item(shop_state: ShopState, item_name: str) -> Optional[MenuItem]:
@@ -667,7 +806,7 @@ def _make_autonomous_decision(
     response = client.complete_json(
         prompt=prompt,
         system=system,
-        max_tokens=512,
+        max_tokens=160,
         temperature=0.4,
     )
 
@@ -695,6 +834,106 @@ def _make_autonomous_decision(
         )
     except (ValueError, KeyError):
         return None
+
+
+def _build_low_stock_action(shop_state: ShopState, inv: InventoryItem) -> Optional[ShopAction]:
+    rules = shop_state.rules
+    available_cash = max(0.0, shop_state.cash_on_hand - rules.min_cash_reserve)
+    spend_limit = min(available_cash, shop_state.cash_on_hand * rules.max_restock_spend_pct)
+    affordable_qty = int(spend_limit // inv.unit_cost) if inv.unit_cost > 0 else 0
+    target_qty = min(inv.max_capacity - inv.quantity_remaining, max(inv.restock_threshold * 2, 8))
+    applied_qty = min(target_qty, affordable_qty)
+
+    if applied_qty <= 0:
+        return None
+
+    projected_cost = round(applied_qty * inv.unit_cost, 2)
+    return ShopAction(
+        action_type=ShopActionType.RESTOCK,
+        description=(
+            f"RESTOCK: '{inv.menu_item_name}' low at {inv.quantity_remaining}/{inv.max_capacity} -- "
+            f"adding {applied_qty} units for ${projected_cost:.2f}"
+        ),
+        details={
+            "item_name": inv.menu_item_name,
+            "quantity": applied_qty,
+            "reason": f"Low stock trigger at {inv.quantity_remaining} units",
+        },
+        autonomous=True,
+        context_gathered=[
+            f"Inventory: {inv.quantity_remaining}/{inv.max_capacity}",
+            f"Threshold: {inv.restock_threshold}",
+            f"Cash on hand: ${shop_state.cash_on_hand:.2f}",
+        ],
+        options_considered=[
+            {"option": f"Restock {applied_qty}", "reason": "Maintain service without blocking reserve"},
+            {"option": "Wait", "reason": "Preserve cash"},
+        ],
+        reasoning=(
+            f"Restocking {inv.menu_item_name} with {applied_qty} units keeps stock above threshold "
+            f"without violating reserve or restock spend limits."
+        ),
+        confidence=0.92,
+    )
+
+
+def _build_cash_crisis_action(shop_state: ShopState) -> Optional[ShopAction]:
+    rules = shop_state.rules
+    candidates = [
+        item for item in shop_state.strategy.menu
+        if item.name not in shop_state.removed_items
+    ]
+    if not candidates:
+        return None
+
+    best_seller = max(candidates, key=lambda item: (_get_total_item_orders(shop_state, item.name), item.margin))
+    current_price = shop_state.get_current_price(best_seller.name) or best_seller.base_price
+    new_price = round(min(
+        current_price * 1.10,
+        best_seller.base_price * (1 + rules.max_markup_pct),
+    ), 2)
+
+    if new_price <= current_price:
+        worst_item = min(candidates, key=lambda item: (_get_total_item_orders(shop_state, item.name), item.margin))
+        return ShopAction(
+            action_type=ShopActionType.REMOVE_ITEM,
+            description=(
+                f"CASH CRISIS: removing '{worst_item.name}' to protect ${rules.min_cash_reserve:.2f} reserve"
+            ),
+            details={
+                "item_name": worst_item.name,
+                "reason": "Lowest demand item during cash reserve breach",
+            },
+            autonomous=True,
+            reasoning=(
+                f"Cash fell below reserve and pricing headroom is exhausted. Removing {worst_item.name} "
+                f"cuts inventory drag on the weakest seller."
+            ),
+            confidence=0.8,
+        )
+
+    return ShopAction(
+        action_type=ShopActionType.ADJUST_PRICE,
+        description=(
+            f"CASH CRISIS: '{best_seller.name}' ${current_price:.2f} -> ${new_price:.2f} to rebuild cash reserve"
+        ),
+        details={
+            "item_name": best_seller.name,
+            "new_price": new_price,
+            "reason": "Top seller selected for emergency price support",
+        },
+        autonomous=True,
+        context_gathered=[
+            f"Cash on hand: ${shop_state.cash_on_hand:.2f}",
+            f"Reserve target: ${rules.min_cash_reserve:.2f}",
+            f"{best_seller.name} lifetime orders: {_get_total_item_orders(shop_state, best_seller.name)}",
+        ],
+        reasoning=(
+            f"Cash reserve breach triggered a temporary 10% increase on the strongest seller "
+            f"within configured markup limits."
+        ),
+        confidence=0.84,
+    )
 
 
 # ─── Action Application with Guardrails ──────────────────────────────────────

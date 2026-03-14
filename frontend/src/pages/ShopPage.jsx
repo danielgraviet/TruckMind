@@ -50,6 +50,7 @@ function CustomerServiceSection({
   escalationMessages,
   onChannelMessage,
   automationActive,
+  channelSending,
 }) {
   return (
     <div className="space-y-4 h-full">
@@ -76,6 +77,7 @@ function CustomerServiceSection({
           messages={walkUpMessages}
           onSend={(msg) => onChannelMessage('walk_up', msg)}
           automationActive={automationActive}
+          isSending={channelSending?.walk_up}
         />
         <CustomerChannel
           channel="text_order"
@@ -83,6 +85,7 @@ function CustomerServiceSection({
           messages={textMessages}
           onSend={(msg) => onChannelMessage('text_order', msg)}
           automationActive={automationActive}
+          isSending={channelSending?.text_order}
         />
         <CustomerChannel
           channel="escalation"
@@ -91,6 +94,7 @@ function CustomerServiceSection({
           onSend={(msg) => onChannelMessage('escalation', msg)}
           isEscalation={true}
           automationActive={automationActive}
+          isSending={channelSending?.escalation}
         />
       </div>
     </div>
@@ -171,7 +175,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
     sendMessage, simulateRush,
     rules, liveEvents, walkUpMessages, textMessages, escalationMessages,
     rushMode, rushCountdown, customerTrickle,
-    loadRules, saveRules, handleChannelMessage, startTrickle, startRush, streamConnected,
+    loadRules, saveRules, handleChannelMessage, startTrickle, startRush, streamConnected, channelSending,
   } = useShop(strategy, forceMock)
 
   const businessName = strategy?.businessName ?? 'Your Food Truck'
@@ -210,6 +214,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
               escalationMessages={escalationMessages}
               onChannelMessage={handleChannelMessage}
               automationActive={customerTrickle && (mockMode || streamConnected)}
+              channelSending={channelSending}
             />
           )}
           {activeSection === 'inventory' && (

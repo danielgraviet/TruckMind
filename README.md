@@ -152,3 +152,29 @@ The Silicon Sampling layer isn't a gimmick. It's a genuine competitive advantage
 ---
 
 *Built at Podium Hackathon 2026 · Provo, UT*
+
+## Development
+
+### Backend with `uv`
+
+The Python project lives in `backend/`, not at repo root.
+Use `uv` against that project explicitly:
+
+```bash
+uv sync --project backend
+cd backend && uv run uvicorn server:app --reload --port 8000
+```
+
+Run the CLI pipeline the same way:
+
+```bash
+cd backend && uv run python -m engine.pipeline "Taco truck near BYU" --location "Provo, UT" --mock
+cd backend && uv run python -m engine.pipeline "Taco truck near BYU" --location "Provo, UT" --mock --interactive
+```
+
+Or use the Make targets from repo root:
+
+```bash
+make sync-backend
+make dev-backend
+```
