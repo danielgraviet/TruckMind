@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 
-const DEFAULT_RULES = {
+export const DEFAULT_RULES = {
   max_markup_pct: 0.25,
   min_margin_multiplier: 1.10,
   min_cash_reserve: 50,
@@ -98,7 +98,10 @@ export default function RulesForm({ rules: externalRules, onSave }) {
     setLocal({ ...DEFAULT_RULES, ...externalRules })
   }, [externalRules])
 
-  const isDirty = JSON.stringify(local) !== JSON.stringify(initialRules)
+  const isDirty = useMemo(
+    () => JSON.stringify(local) !== JSON.stringify(initialRules),
+    [local, initialRules]
+  )
 
   const set = (key, val) => setLocal((prev) => ({ ...prev, [key]: val }))
   const setCategoryInventory = (category, val) =>

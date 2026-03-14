@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import ConfidenceBar from './ConfidenceBar.jsx'
 
 function TimelineNode({ step, label, content, isLast = false }) {
   return (
@@ -13,23 +14,6 @@ function TimelineNode({ step, label, content, isLast = false }) {
         <span className="text-[10px] font-semibold text-red-400 uppercase tracking-wider">{label}</span>
         <div className="mt-0.5">{content}</div>
       </div>
-    </div>
-  )
-}
-
-function ConfidenceBar({ confidence }) {
-  const pct = Math.round(confidence * 100)
-  return (
-    <div className="flex items-center gap-2 mt-1">
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <motion.div
-          className="h-full rounded-full bg-red-500"
-          initial={false}
-          animate={{ width: `${pct}%` }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-        />
-      </div>
-      <span className="text-[10px] text-gray-500 tabular-nums">{pct}%</span>
     </div>
   )
 }
@@ -85,7 +69,7 @@ export default function EscalationCard({ action }) {
         <TimelineNode
           step={3}
           label="Confidence Level"
-          content={<ConfidenceBar confidence={action.confidence ?? 0} />}
+          content={<ConfidenceBar confidence={action.confidence ?? 0} barClass="bg-red-500" />}
         />
 
         {/* Step 4: Policy Restriction */}

@@ -119,6 +119,7 @@ export default function MonitoringPanel({
     routing: RoutingPanel,
   }
   const PanelComponent = panels[type] ?? panels.scheduling
+  const effectiveOrders = orders ?? shopState?.recentOrders ?? []
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -130,7 +131,7 @@ export default function MonitoringPanel({
           Simulated
         </span>
       </div>
-      <PanelComponent strategy={strategy} shopState={shopState} orders={orders} />
+      <PanelComponent strategy={strategy} shopState={shopState} orders={effectiveOrders} />
     </div>
   )
 }

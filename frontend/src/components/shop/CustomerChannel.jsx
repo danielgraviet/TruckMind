@@ -53,6 +53,7 @@ export default function CustomerChannel({
   messages = [],
   onSend,
   isEscalation = false,
+  automationActive = false,
 }) {
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
@@ -85,6 +86,11 @@ export default function CustomerChannel({
             ESCALATION
           </span>
         )}
+        {automationActive && !isEscalation && (
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+            AI AUTO
+          </span>
+        )}
       </div>
 
       {/* Messages */}
@@ -97,7 +103,7 @@ export default function CustomerChannel({
               animate={{ opacity: 1 }}
               className="text-sm text-gray-600 text-center mt-8"
             >
-              {isEscalation ? 'No escalations yet.' : 'Waiting for customers...'}
+              {isEscalation ? 'No escalations yet.' : automationActive ? 'AI is populating this lane in real time...' : 'Waiting for customers...'}
             </motion.p>
           ) : (
             messages.map((msg) => (

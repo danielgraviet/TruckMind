@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { formatTimeWithSeconds } from '../../utils/formatTime.js'
 
 const EVENT_STYLES = {
   order:            { dot: 'bg-emerald-500', icon: '\uD83D\uDCB3' },
@@ -9,12 +10,6 @@ const EVENT_STYLES = {
   rush:             { dot: 'bg-red-500 animate-pulse', icon: '\u26A1' },
   customer_arrival: { dot: 'bg-gray-500',    icon: '\uD83D\uDC64' },
   default:          { dot: 'bg-gray-500',    icon: '\uD83D\uDCCB' },
-}
-
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  const d = new Date(timestamp)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function EventItem({ event }) {
@@ -35,7 +30,7 @@ function EventItem({ event }) {
         <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${style.dot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-[11px] text-gray-500 tabular-nums shrink-0">{formatTime(event.timestamp)}</span>
+            <span className="text-[11px] text-gray-500 tabular-nums shrink-0">{formatTimeWithSeconds(event.timestamp)}</span>
             <span className="text-xs">{style.icon}</span>
             <span className="text-xs text-gray-300 truncate">{event.text}</span>
           </div>
@@ -74,10 +69,6 @@ export default function LiveFeed({ events = [] }) {
     prevLenRef.current = events.length
   }, [events.length])
 
-  const sorted = [...events].sort((a, b) =>
-    new Date(b.timestamp) - new Date(a.timestamp)
-  )
-
   return (
     <div className="bg-gray-900 border-l border-gray-800 w-72 flex flex-col overflow-hidden">
       {/* Header */}
@@ -89,7 +80,7 @@ export default function LiveFeed({ events = [] }) {
       {/* Event list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0 py-1 scrollbar-thin">
         <AnimatePresence initial={false}>
-          {sorted.length === 0 ? (
+          {events.length === 0 ? (
             <motion.p
               key="empty"
               initial={{ opacity: 0 }}
@@ -99,7 +90,7 @@ export default function LiveFeed({ events = [] }) {
               Events will appear here...
             </motion.p>
           ) : (
-            sorted.map((event, i) => (
+            events.map((event, i) => (
               <EventItem key={event.id ?? `${event.timestamp}-${i}`} event={event} />
             ))
           )}

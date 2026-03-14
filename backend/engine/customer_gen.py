@@ -6,9 +6,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
-FIRST_NAMES = ["Alex", "Jordan", "Taylor", "Morgan", "Casey", "Riley", "Drew", "Jamie", "Sam", "Blake",
-               "Avery", "Quinn", "Peyton", "Bailey", "Harper", "Skyler", "Reese", "Cameron", "Finley", "Logan"]
-LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Wilson", "Moore"]
+from agents.crowd import FIRST_NAMES, LAST_NAMES
 
 COMPLAINT_SCENARIOS = [
     {"type": "wrong_order", "mood": "frustrated", "opener": "This isn't what I ordered!"},

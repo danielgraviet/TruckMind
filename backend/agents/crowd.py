@@ -971,19 +971,20 @@ def _derive_price_sensitivity(income: int, rng: random.Random) -> PriceSensitivi
         return PriceSensitivity.LOW
 
 
+_UNIVERSITY_BY_LOCATION = {
+    "Provo, UT": "BYU",
+    "Orem, UT": "UVU",
+    "Logan, UT": "Utah State",
+    "St. George, UT": "Dixie State",
+}
+
+
 def _generate_backstory(name: str, age: int, occupation: str, rng: random.Random, location: str = "") -> str:
     """Build a plausible 2-sentence backstory."""
     origins = ["California", "Idaho", "Arizona", "Texas", "the Midwest", "the East Coast", "Oregon"]
     weaknesses = ["street tacos", "burgers", "fried chicken", "boba tea", "pizza", "ice cream"]
 
-    # Map location to the university mentioned in backstories
-    _university_by_location = {
-        "Provo, UT": "BYU",
-        "Orem, UT": "UVU",
-        "Logan, UT": "Utah State",
-        "St. George, UT": "Dixie State",
-    }
-    local_university = _university_by_location.get(location, "the local university")
+    local_university = _UNIVERSITY_BY_LOCATION.get(location, "the local university")
 
     sentences = []
 

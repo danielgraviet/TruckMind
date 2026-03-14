@@ -345,6 +345,7 @@ class Order:
     items: list[str]           # menu item names
     total_price: float
     status: str = "pending"    # "pending", "preparing", "ready", "completed"
+    channel: str = "walk_up"
 
     def to_dict(self) -> dict:
         return {
@@ -354,6 +355,7 @@ class Order:
             "items": self.items,
             "total_price": self.total_price,
             "status": self.status,
+            "channel": self.channel,
         }
 
 
@@ -445,6 +447,65 @@ class ShopState:
     trigger_cooldowns: dict[str, int] = field(default_factory=dict)  # "trigger:item" → order count at last fire
     rules: ShopRules = field(default_factory=ShopRules)
 
+    def _menu_item_map(self) -> dict[str, MenuItem]:
+        return {item.name: item for item in self.strategy.menu}
+
+    def total_cogs_sold(self) -> float:
+        menu_map = self._menu_item_map()
+        total = 0.0
+        for order in self.orders:
+            for item_name in order.items:
+                item = menu_map.get(item_name)
+                if item:
+                    total += item.cost_to_make
+        return total
+
+    def gross_profit(self) -> float:
+        return self.total_revenue - self.total_cogs_sold()
+
+    def avg_order_value(self) -> float:
+        if self.total_orders <= 0:
+            return 0.0
+        return self.total_revenue / self.total_orders
+
+    def food_cost_pct(self) -> float:
+        if self.total_revenue <= 0:
+            return 0.0
+        return self.total_cogs_sold() / self.total_revenue
+
+    def gross_margin_pct(self) -> float:
+        if self.total_revenue <= 0:
+            return 0.0
+        return self.gross_profit() / self.total_revenue
+
+    def inventory_value_on_hand(self) -> float:
+        return sum(inv.quantity_remaining * inv.unit_cost for inv in self.inventory)
+
+    def inventory_units_remaining(self) -> int:
+        return sum(inv.quantity_remaining for inv in self.inventory)
+
+    def low_stock_count(self) -> int:
+        return sum(1 for inv in self.inventory if inv.is_low and not inv.is_out)
+
+    def out_of_stock_count(self) -> int:
+        return sum(1 for inv in self.inventory if inv.is_out)
+
+    def autonomous_action_count(self) -> int:
+        return sum(1 for action in self.action_log if action.autonomous)
+
+    def pricing_action_count(self) -> int:
+        return sum(
+            1
+            for action in self.action_log
+            if action.action_type in {ShopActionType.ADJUST_PRICE, ShopActionType.ADD_SPECIAL}
+        )
+
+    def restock_action_count(self) -> int:
+        return sum(1 for action in self.action_log if action.action_type == ShopActionType.RESTOCK)
+
+    def escalation_count(self) -> int:
+        return sum(1 for action in self.action_log if action.escalated)
+
     def get_active_menu(self) -> list[MenuItem]:
         """Menu items currently available (in stock + not removed)."""
         active = []
@@ -479,6 +540,8 @@ class ShopState:
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
+        total_cogs = self.total_cogs_sold()
+        gross_profit = self.gross_profit()
         return {
             "active_menu": [i.to_dict() for i in self.get_active_menu()],
             "inventory": [i.to_dict() for i in self.inventory],
@@ -487,8 +550,23 @@ class ShopState:
             "current_prices": self.current_prices,
             "removed_items": self.removed_items,
             "total_revenue": round(self.total_revenue, 2),
+            "total_cogs": round(total_cogs, 2),
+            "gross_profit": round(gross_profit, 2),
             "total_orders": self.total_orders,
             "cash_on_hand": round(self.cash_on_hand, 2),
+            "kpis": {
+                "avg_order_value": round(self.avg_order_value(), 2),
+                "food_cost_pct": round(self.food_cost_pct(), 3),
+                "gross_margin_pct": round(self.gross_margin_pct(), 3),
+                "inventory_value_on_hand": round(self.inventory_value_on_hand(), 2),
+                "inventory_units_remaining": self.inventory_units_remaining(),
+                "low_stock_items": self.low_stock_count(),
+                "out_of_stock_items": self.out_of_stock_count(),
+                "autonomous_actions": self.autonomous_action_count(),
+                "pricing_actions": self.pricing_action_count(),
+                "restocks": self.restock_action_count(),
+                "escalations": self.escalation_count(),
+            },
             "rules": self.rules.to_dict(),
         }
 
