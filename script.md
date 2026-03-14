@@ -26,8 +26,6 @@ Type the concept. Select city from the map picker. Click "Find Best Strategy."
 
 Show personas populating the grid — avatars with names, ages, occupations appearing one by one.
 
-▎ "Each persona has an income bracket, dietary restrictions, a lunch budget, and a backstory grounded in who actually lives near your truck."
-
 ▎ "Simultaneously, a second agent is doing market research — generating three distinct business strategies: a value play, a premium concept, and a niche angle. Each with a full menu, pricing rationale, and competitive position."
 
 Show the three strategy cards appearing.
