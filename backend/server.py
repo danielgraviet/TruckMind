@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from models.schema import BusinessConcept
-from agents.strategist import create_strategy
+from agents.strategist import create_strategy, create_strategy_options
 from agents.crowd import generate_personas, get_demographics
 from agents.simulator import run_simulation
 from agents.shop import initialize_shop, handle_customer
@@ -171,7 +171,31 @@ async def _pipeline_generator(pipeline_id: str):
 
 # ─── /api/simulate — snapshot-style SSE (what the frontend consumes) ─────────
 
-def _snapshot(phase: str, strategy, personas_base: list, reactions: dict, stats=None) -> str:
+def _evaluate_strategies(results: list) -> tuple[int, str]:
+    """Score all strategies, return (winner_index, rationale)."""
+    scores = []
+    for i, (strategy, sim_result) in enumerate(results):
+        interest  = sim_result.overall_interest_rate                                   # 0–1
+        revenue   = min(sim_result.projected_daily_revenue / 800, 1.0)                 # norm ~$800/day
+        sentiment = (sim_result.avg_sentiment_score + 2) / 4                          # -2..+2 → 0..1
+        avg_margin = (
+            sum(item.margin for item in strategy.menu) / max(len(strategy.menu), 1)
+        )
+        score = interest * 35 + revenue * 35 + sentiment * 20 + avg_margin * 10
+        scores.append((score, i))
+
+    scores.sort(reverse=True)
+    winner_idx = scores[0][1]
+    winner_strategy, winner_result = results[winner_idx]
+    rationale = (
+        f"{winner_strategy.business_name} wins: "
+        f"{winner_result.overall_interest_rate:.0%} customer interest, "
+        f"${winner_result.projected_daily_revenue:,.0f}/day projected revenue."
+    )
+    return winner_idx, rationale
+
+
+def _snapshot(phase: str, strategy, personas_base: list, reactions: dict, stats=None, **extra) -> str:
     """
     Build an unnamed SSE event (data: only, no event: line) containing a full
     snapshot of pipeline state. The frontend's normalizeSnapshot() reads this shape.
@@ -189,26 +213,34 @@ def _snapshot(phase: str, strategy, personas_base: list, reactions: dict, stats=
         "strategy": strategy.to_dict() if strategy else None,
         "personas": merged,
         "stats": stats,
+        **extra,
     }
     return f"data: {json.dumps(payload)}\n\n"
 
 
 async def _simulate_generator(concept: str, location: str, mock: bool, budget: Optional[float]):
+    """
+    Full pipeline:
+      1. Generate 3 strategy options (value / premium / niche)
+      2. Generate one shared persona pool (100 people)
+      3. Run each strategy against the same personas
+      4. Evaluator scores all 3 → picks winner
+      5. Stream winner as final state
+    """
     client = MockLLMClient() if mock else LLMClient()
-    personas_base: list = []
-    reactions: dict = {}   # persona_id → reaction fields
-    strategy = None
     loop = asyncio.get_event_loop()
 
     try:
-        # Phase 1 — strategy
-        yield _snapshot("strategy", None, [], {})
         bc = BusinessConcept(description=concept, location=location, budget=budget)
-        strategy = await asyncio.to_thread(create_strategy, bc, client)
-        yield _snapshot("strategy", strategy, [], {})
 
-        # Phase 2 — personas (stream each one as it's created)
-        yield _snapshot("personas", strategy, [], {})
+        # ── Phase 1: Generate 3 strategy options ────────────────────────────
+        yield _snapshot("strategy", None, [], {}, strategy_options=[], testing_index=None)
+        strategy_options = await asyncio.to_thread(create_strategy_options, bc, client)
+        opts_dict = [s.to_dict() for s in strategy_options]
+        yield _snapshot("strategy", strategy_options[0], [], {}, strategy_options=opts_dict)
+
+        # ── Phase 2: Generate personas (shared pool for all 3 tests) ────────
+        yield _snapshot("personas", strategy_options[0], [], {}, strategy_options=opts_dict)
 
         persona_queue: asyncio.Queue = asyncio.Queue()
         DONE_PERSONAS = object()
@@ -218,67 +250,113 @@ async def _simulate_generator(concept: str, location: str, mock: bool, budget: O
 
         async def _gen_personas():
             result = await asyncio.to_thread(
-                generate_personas, location, strategy, client, 100, 20,
+                generate_personas, location, strategy_options[0], client, 100, 20,
                 on_persona=on_persona,
             )
             loop.call_soon_threadsafe(persona_queue.put_nowait, DONE_PERSONAS)
             return result
 
         persona_task = asyncio.create_task(_gen_personas())
-        personas_base = []
+        personas_base: list = []
 
         while True:
             item = await persona_queue.get()
             if item is DONE_PERSONAS:
                 break
             personas_base.append(item)
-            yield _snapshot("personas", strategy, personas_base, {})
+            yield _snapshot("personas", strategy_options[0], personas_base, {},
+                            strategy_options=opts_dict)
 
         personas_base = await persona_task
 
-        # Phase 3 — simulation
-        yield _snapshot("simulation", strategy, personas_base, {})
+        # ── Phase 3: Test each strategy against the same personas ───────────
+        strategy_results: list = []  # list of (Strategy, SimulationResult)
 
-        reaction_queue: asyncio.Queue = asyncio.Queue()
-        DONE = object()
+        for i, strategy in enumerate(strategy_options):
+            reactions: dict = {}
+            yield _snapshot("testing", strategy, personas_base, {},
+                            strategy_options=opts_dict,
+                            testing_index=i,
+                            total_strategies=len(strategy_options))
 
-        def on_reaction(reaction):
-            loop.call_soon_threadsafe(reaction_queue.put_nowait, reaction.to_dict())
+            reaction_queue: asyncio.Queue = asyncio.Queue()
+            DONE = object()
 
-        async def _run_sim():
-            result = await asyncio.to_thread(
-                run_simulation, strategy, personas_base, client, 1,
-                on_reaction=on_reaction,
-            )
-            loop.call_soon_threadsafe(reaction_queue.put_nowait, DONE)
-            return result
+            def on_reaction(reaction, _q=reaction_queue):
+                loop.call_soon_threadsafe(_q.put_nowait, reaction.to_dict())
 
-        sim_task = asyncio.create_task(_run_sim())
+            async def _run_sim(_strat=strategy, _rnd=i + 1, _q=reaction_queue):
+                result = await asyncio.to_thread(
+                    run_simulation, _strat, personas_base, client, _rnd,
+                    on_reaction=lambda r, q=_q: loop.call_soon_threadsafe(q.put_nowait, r.to_dict()),
+                )
+                loop.call_soon_threadsafe(_q.put_nowait, DONE)
+                return result
 
-        while True:
-            item = await reaction_queue.get()
-            if item is DONE:
-                break
-            reactions[item["persona_id"]] = {
-                "sentiment":  item["sentiment"],
-                "feedback":   item["feedback"],
-                "would_visit": item["would_visit"],
-                "likely_order": item["likely_order"],
+            sim_task = asyncio.create_task(_run_sim())
+
+            while True:
+                item = await reaction_queue.get()
+                if item is DONE:
+                    break
+                reactions[item["persona_id"]] = {
+                    "sentiment":   item["sentiment"],
+                    "feedback":    item["feedback"],
+                    "would_visit": item["would_visit"],
+                    "likely_order": item["likely_order"],
+                }
+                yield _snapshot("testing", strategy, personas_base, reactions,
+                                strategy_options=opts_dict,
+                                testing_index=i,
+                                total_strategies=len(strategy_options))
+
+            sim_result = await sim_task
+            strategy_results.append((strategy, sim_result))
+
+        # ── Phase 4: Evaluate ────────────────────────────────────────────────
+        yield _snapshot("evaluating", None, personas_base, {},
+                        strategy_options=opts_dict,
+                        total_strategies=len(strategy_options))
+
+        winner_idx, rationale = _evaluate_strategies(strategy_results)
+        winner_strategy, winner_result = strategy_results[winner_idx]
+
+        # Build compact per-strategy result summaries
+        all_results = []
+        for j, (s, r) in enumerate(strategy_results):
+            sdist = dict(Counter(rx.sentiment.value for rx in r.reactions))
+            all_results.append({
+                "strategy": s.to_dict(),
+                "stats": {**r.to_dict(), "sentiment_distribution": sdist},
+                "is_winner": j == winner_idx,
+            })
+
+        # Winner reaction states for the dot board
+        winner_reactions = {
+            r.persona_id: {
+                "sentiment":   r.sentiment.value,
+                "feedback":    r.feedback,
+                "would_visit": r.would_visit,
+                "likely_order": r.likely_order,
             }
-            yield _snapshot("simulation", strategy, personas_base, reactions)
+            for r in winner_result.reactions
+        }
+        winner_sdist = dict(Counter(r.sentiment.value for r in winner_result.reactions))
+        winner_stats = {**winner_result.to_dict(), "sentiment_distribution": winner_sdist}
 
-        sim_result = await sim_task
-
-        # Build stats dict with sentiment_distribution added
-        sentiment_dist = dict(Counter(r.sentiment.value for r in sim_result.reactions))
-        stats = {**sim_result.to_dict(), "sentiment_distribution": sentiment_dist}
-
-        # Persist shop for the shop page
-        shop_state = initialize_shop(strategy, starting_cash=budget or 500.0)
+        # Persist winner shop
+        shop_state = initialize_shop(winner_strategy, starting_cash=budget or 500.0)
         active_shop["state"] = shop_state
         active_shop["client"] = client
 
-        yield _snapshot("complete", strategy, personas_base, reactions, stats)
+        yield _snapshot("complete", winner_strategy, personas_base, winner_reactions,
+                        winner_stats,
+                        strategy_options=opts_dict,
+                        testing_index=winner_idx,
+                        total_strategies=len(strategy_options),
+                        strategy_results=all_results,
+                        winner_index=winner_idx,
+                        winner_rationale=rationale)
 
     except Exception as exc:
         yield f"data: {json.dumps({'phase': 'error', 'message': str(exc)})}\n\n"
@@ -289,14 +367,25 @@ async def _simulate_generator(concept: str, location: str, mock: bool, budget: O
 @app.get("/api/simulate")
 async def simulate(concept: str, location: str, mock: bool = False, budget: Optional[float] = None):
     """
-    SSE stream in snapshot format — this is what the frontend connects to.
-    Each event is an unnamed `data: {...}` message containing the full current state.
+    SSE stream: generates 3 strategies, tests all against shared personas, evaluates winner.
     """
     return StreamingResponse(
         _simulate_generator(concept, location, mock, budget),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/strategies")
+async def get_strategies(concept: str, location: str, mock: bool = False, budget: Optional[float] = None):
+    """
+    Generate 3 strategy options (value/premium/niche) and return them as JSON.
+    The frontend shows these as selectable cards before running the full simulation.
+    """
+    client = MockLLMClient() if mock else LLMClient()
+    bc = BusinessConcept(description=concept, location=location, budget=budget)
+    strategies = await asyncio.to_thread(create_strategy_options, bc, client)
+    return {"strategies": [s.to_dict() for s in strategies]}
 
 
 @app.post("/api/pipeline")

@@ -1,20 +1,17 @@
-import { useReducer, useCallback, useRef, useState } from 'react'
-import { SENTIMENT_EMOJIS } from '../constants/sentiments.js'
+import { useReducer, useCallback, useRef, useState, useEffect } from 'react'
 import { connectToSimulation, connectMock } from '../api/simulationApi.js'
 
-// ─────────────────────────── State shape ─────────────────────────────
-// {
-//   phase: 'idle' | 'strategy' | 'personas' | 'simulation' | 'complete'
-//   strategy: null | { businessName, tagline, menu }
-//   personas: []          // ordered by appearance; base info only
-//   personaStates: {}     // { [id]: { sentiment, feedback, wouldVisit, likelyOrder } }
-//   stats: null | { ... }
-//   isRunning: boolean
-// }
+const REVEAL_INTERVAL_MS = 180
 
 const initialState = {
   phase: 'idle',
   strategy: null,
+  strategyOptions: [],
+  testingIndex: null,
+  totalStrategies: null,
+  winnerIndex: null,
+  winnerRationale: null,
+  strategyResults: [],
   personas: [],
   personaStates: {},
   stats: null,
@@ -28,30 +25,29 @@ function reducer(state, action) {
 
     case 'SNAPSHOT': {
       const snap = action.payload
+
+      // When testingIndex changes, clear old reaction states so dots reset color
+      const indexChanged = snap.testingIndex !== null && snap.testingIndex !== state.testingIndex
+      const baseStates = indexChanged ? {} : { ...state.personaStates }
+
       const existingIds = new Set(state.personas.map(p => p.id))
       const newPersonas = [...state.personas]
-      const newPersonaStates = { ...state.personaStates }
+      const newPersonaStates = { ...baseStates }
 
       for (const p of snap.personas) {
         if (!existingIds.has(p.id)) {
           existingIds.add(p.id)
           newPersonas.push({
-            id: p.id,
-            name: p.name,
-            age: p.age,
-            occupation: p.occupation,
-            annualIncome: p.annualIncome,
+            id: p.id, name: p.name, age: p.age,
+            occupation: p.occupation, annualIncome: p.annualIncome,
             priceSensitivity: p.priceSensitivity,
             dietaryRestrictions: p.dietaryRestrictions,
           })
         }
-
         if (p.sentiment !== null) {
           newPersonaStates[p.id] = {
-            sentiment: p.sentiment,
-            feedback: p.feedback,
-            wouldVisit: p.wouldVisit,
-            likelyOrder: p.likelyOrder,
+            sentiment: p.sentiment, feedback: p.feedback,
+            wouldVisit: p.wouldVisit, likelyOrder: p.likelyOrder,
           }
         }
       }
@@ -59,10 +55,16 @@ function reducer(state, action) {
       return {
         ...state,
         phase: snap.phase,
-        strategy: snap.strategy ?? state.strategy,
-        personas: newPersonas,
-        personaStates: newPersonaStates,
-        stats: snap.stats ?? state.stats,
+        strategy:        snap.strategy        ?? state.strategy,
+        strategyOptions: snap.strategyOptions?.length ? snap.strategyOptions : state.strategyOptions,
+        testingIndex:    snap.testingIndex    ?? state.testingIndex,
+        totalStrategies: snap.totalStrategies ?? state.totalStrategies,
+        winnerIndex:     snap.winnerIndex     ?? state.winnerIndex,
+        winnerRationale: snap.winnerRationale ?? state.winnerRationale,
+        strategyResults: snap.strategyResults?.length ? snap.strategyResults : state.strategyResults,
+        personas:        newPersonas,
+        personaStates:   newPersonaStates,
+        stats:           snap.stats ?? state.stats,
       }
     }
 
@@ -77,26 +79,51 @@ function reducer(state, action) {
   }
 }
 
-// ──────────────────────────────── Hook ───────────────────────────────
-
 export function useSimulation() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const [mockMode, setMockMode] = useState(true)
-  const cleanupRef = useRef(null)
-  // Use a ref so the start callback always sees the current mockMode
+  const cleanupRef  = useRef(null)
   const mockModeRef = useRef(mockMode)
   mockModeRef.current = mockMode
+
+  // ── Reveal buffer (personas appear gradually) ─────────────────────
+  const bufferRef   = useRef([])
+  const shownIdsRef = useRef(new Set())
+  const [visiblePersonas, setVisiblePersonas] = useState([])
+
+  useEffect(() => {
+    for (const p of state.personas) {
+      if (!shownIdsRef.current.has(p.id)) {
+        shownIdsRef.current.add(p.id)
+        bufferRef.current.push(p)
+      }
+    }
+  }, [state.personas])
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (bufferRef.current.length > 0) {
+        const next = bufferRef.current.shift()
+        setVisiblePersonas(prev => [...prev, next])
+      }
+    }, REVEAL_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  // ── Actions ──────────────────────────────────────────────────────
 
   const start = useCallback((concept, location) => {
     if (cleanupRef.current) {
       cleanupRef.current()
       cleanupRef.current = null
     }
+    bufferRef.current   = []
+    shownIdsRef.current = new Set()
+    setVisiblePersonas([])
 
     dispatch({ type: 'START' })
 
     const connector = mockModeRef.current ? connectMock : connectToSimulation
-
     cleanupRef.current = connector(
       concept,
       location,
@@ -116,5 +143,20 @@ export function useSimulation() {
     dispatch({ type: 'STOP' })
   }, [])
 
-  return { state, mockMode, setMockMode, start, stop }
+  const reset = useCallback(() => {
+    if (cleanupRef.current) {
+      cleanupRef.current()
+      cleanupRef.current = null
+    }
+    bufferRef.current   = []
+    shownIdsRef.current = new Set()
+    setVisiblePersonas([])
+    dispatch({ type: 'RESET' })
+  }, [])
+
+  return {
+    state: { ...state, personas: visiblePersonas },
+    mockMode, setMockMode,
+    start, stop, reset,
+  }
 }
