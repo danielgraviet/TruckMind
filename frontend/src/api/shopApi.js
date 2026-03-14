@@ -1,0 +1,276 @@
+// ─────────────────────────── Live API calls ───────────────────────────
+
+export async function fetchShopState() {
+  const res = await fetch('/api/shop/state')
+  if (!res.ok) throw new Error(`Shop state fetch failed: ${res.status}`)
+  return res.json()
+}
+
+export async function sendOrder(message, customerName = 'Customer') {
+  const res = await fetch('/api/order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, customer_name: customerName }),
+  })
+  if (!res.ok) throw new Error(`Order failed: ${res.status}`)
+  return res.json()
+}
+
+export async function triggerRush() {
+  const res = await fetch('/api/shop/simulate-rush', { method: 'POST' })
+  if (!res.ok) throw new Error(`Rush trigger failed: ${res.status}`)
+  return res.json()
+}
+
+// ─────────────────────────── Mock helpers ──────────────────────────────
+
+const CATEGORY_CAPACITY = { tacos: 10, bowls: 8, mains: 8, sides: 12, drinks: 15, desserts: 6 }
+
+let _actionId = 0
+function nextActionId() { return `action-${++_actionId}` }
+
+export function buildMockShopState(strategy) {
+  if (!strategy?.menu?.length) return null
+
+  const inventory = {}
+  const currentPrices = {}
+
+  for (const item of strategy.menu) {
+    const cap = CATEGORY_CAPACITY[item.category] ?? 10
+    inventory[item.name] = { quantity: cap, maxCapacity: cap }
+    currentPrices[item.name] = item.base_price
+  }
+
+  return {
+    activeMenu: strategy.menu.map(i => i.name),
+    inventory,
+    currentPrices,
+    recentOrders: [],
+    recentActions: [],
+    removedItems: [],
+    totalRevenue: 0,
+    totalOrders: 0,
+    cashOnHand: 500,
+  }
+}
+
+// ─────────────────── Mock order processing ────────────────────────────
+
+const CUSTOMER_NAMES = [
+  'Emma', 'Liam', 'Olivia', 'Noah', 'Ava', 'Jackson', 'Sophia', 'Lucas',
+  'Isabella', 'Oliver', 'Mia', 'Ethan', 'Charlotte', 'Aiden', 'Amelia',
+]
+
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)] }
+
+function findMenuItem(shopState, message) {
+  const lower = message.toLowerCase()
+  return shopState.activeMenu.find(name =>
+    lower.includes(name.toLowerCase()) ||
+    name.toLowerCase().split(' ').some(word => word.length > 3 && lower.includes(word))
+  )
+}
+
+export function mockSendOrder(shopState, message) {
+  const matched = findMenuItem(shopState, message)
+  const now = Date.now()
+  const newState = { ...shopState }
+  const actions = []
+
+  if (!matched) {
+    return {
+      shopState: newState,
+      cashierReply: `Sorry, I didn't catch that. We have: ${shopState.activeMenu.join(', ')}. What can I get you?`,
+      actions: [],
+    }
+  }
+
+  const inv = { ...newState.inventory }
+  const item = { ...inv[matched] }
+
+  if (item.quantity <= 0 || shopState.removedItems.includes(matched)) {
+    return {
+      shopState: newState,
+      cashierReply: `Sorry, we're out of ${matched} right now! Can I get you something else?`,
+      actions: [{
+        id: nextActionId(), type: 'reject_order', timestamp: now,
+        description: `Out of stock: ${matched}`,
+        details: `Customer requested ${matched} but quantity is 0`,
+      }],
+    }
+  }
+
+  const price = newState.currentPrices[matched]
+  item.quantity -= 1
+  inv[matched] = item
+  newState.inventory = inv
+  newState.totalRevenue = (newState.totalRevenue ?? 0) + price
+  newState.totalOrders = (newState.totalOrders ?? 0) + 1
+  newState.cashOnHand = (newState.cashOnHand ?? 500) + price
+
+  const order = { id: nextActionId(), item: matched, price, timestamp: now }
+  newState.recentOrders = [...(newState.recentOrders ?? []), order]
+
+  actions.push({
+    id: nextActionId(), type: 'take_order', timestamp: now,
+    description: `Sold ${matched}`,
+    details: `+$${price.toFixed(2)} | Stock: ${item.quantity}/${item.maxCapacity}`,
+  })
+
+  // Auto-restock when hitting 0
+  if (item.quantity === 0) {
+    const restockQty = item.maxCapacity
+    const restockCost = restockQty * (price * 0.4)
+    item.quantity = restockQty
+    inv[matched] = item
+    newState.inventory = inv
+    newState.cashOnHand -= restockCost
+
+    actions.push({
+      id: nextActionId(), type: 'restock', timestamp: now + 1,
+      description: `Restocked ${matched} (+${restockQty})`,
+      details: `Cash: $${(newState.cashOnHand + restockCost).toFixed(0)} → $${newState.cashOnHand.toFixed(0)}`,
+    })
+  }
+
+  const replies = [
+    `One ${matched}, coming right up! That'll be $${price.toFixed(2)}.`,
+    `Great choice! ${matched} for $${price.toFixed(2)}. It'll be ready in a moment!`,
+    `${matched} — you got it! $${price.toFixed(2)} please. Won't be long!`,
+    `Excellent! One ${matched} at $${price.toFixed(2)}. Preparing it now!`,
+  ]
+
+  return {
+    shopState: newState,
+    cashierReply: pickRandom(replies),
+    actions,
+  }
+}
+
+// ─────────────────── Mock rush simulation ─────────────────────────────
+
+export function mockSimulateRush(shopState, onEvent) {
+  let state = { ...shopState }
+  const timeouts = []
+  const orderCounts = {} // track per-item order counts for surge pricing
+
+  const rushOrders = 18
+  const items = state.activeMenu.filter(n => !state.removedItems.includes(n))
+
+  for (let i = 0; i < rushOrders; i++) {
+    const delay = i * 350 + Math.random() * 150
+
+    timeouts.push(setTimeout(() => {
+      const available = state.activeMenu.filter(
+        n => !state.removedItems.includes(n) && (state.inventory[n]?.quantity ?? 0) > 0
+      )
+      if (available.length === 0) return
+
+      const item = pickRandom(available)
+      const customerName = pickRandom(CUSTOMER_NAMES)
+      const price = state.currentPrices[item]
+      const now = Date.now()
+
+      // Process order
+      const inv = { ...state.inventory }
+      const stock = { ...inv[item] }
+      stock.quantity -= 1
+      inv[item] = stock
+      state = {
+        ...state,
+        inventory: inv,
+        totalRevenue: state.totalRevenue + price,
+        totalOrders: state.totalOrders + 1,
+        cashOnHand: state.cashOnHand + price,
+      }
+
+      orderCounts[item] = (orderCounts[item] ?? 0) + 1
+
+      const actions = [{
+        id: nextActionId(), type: 'take_order', timestamp: now,
+        description: `${customerName} ordered ${item}`,
+        details: `+$${price.toFixed(2)} | Stock: ${stock.quantity}/${stock.maxCapacity}`,
+      }]
+
+      const message = {
+        id: nextActionId(),
+        role: 'customer',
+        text: `Can I get a ${item}?`,
+        customerName,
+        timestamp: now,
+      }
+      const reply = {
+        id: nextActionId(),
+        role: 'cashier',
+        text: `One ${item} for $${price.toFixed(2)}!`,
+        timestamp: now + 50,
+      }
+
+      // Auto-remove + restock when hitting 0
+      if (stock.quantity === 0) {
+        const restockQty = stock.maxCapacity
+        const restockCost = restockQty * (price * 0.4)
+        stock.quantity = restockQty
+        inv[item] = stock
+        state = { ...state, inventory: inv, cashOnHand: state.cashOnHand - restockCost }
+
+        actions.push({
+          id: nextActionId(), type: 'restock', timestamp: now + 100,
+          description: `Restocked ${item} (+${restockQty})`,
+          details: `Cash: $${(state.cashOnHand + restockCost).toFixed(0)} → $${state.cashOnHand.toFixed(0)}`,
+        })
+      }
+
+      // Surge pricing every 5th order on popular items
+      if (i > 0 && i % 5 === 0) {
+        const popular = Object.entries(orderCounts)
+          .sort((a, b) => b[1] - a[1])[0]
+        if (popular && popular[1] >= 3) {
+          const surgeItem = popular[0]
+          const oldPrice = state.currentPrices[surgeItem]
+          const newPrice = Math.round(oldPrice * 1.15 * 100) / 100
+          state = {
+            ...state,
+            currentPrices: { ...state.currentPrices, [surgeItem]: newPrice },
+          }
+          actions.push({
+            id: nextActionId(), type: 'adjust_price', timestamp: now + 200,
+            description: `Surge: ${surgeItem}`,
+            details: `$${oldPrice.toFixed(2)} → $${newPrice.toFixed(2)} (+15%)`,
+          })
+        }
+      }
+
+      // Slow mover discount at order 10
+      if (i === 10) {
+        const slowest = Object.entries(orderCounts)
+          .filter(([name]) => state.activeMenu.includes(name))
+          .sort((a, b) => a[1] - b[1])[0]
+        if (slowest) {
+          const slowItem = slowest[0]
+          const oldPrice = state.currentPrices[slowItem]
+          const newPrice = Math.round(oldPrice * 0.85 * 100) / 100
+          state = {
+            ...state,
+            currentPrices: { ...state.currentPrices, [slowItem]: newPrice },
+          }
+          actions.push({
+            id: nextActionId(), type: 'adjust_price', timestamp: now + 200,
+            description: `Discount: ${slowItem}`,
+            details: `$${oldPrice.toFixed(2)} → $${newPrice.toFixed(2)} (-15%)`,
+          })
+        }
+      }
+
+      onEvent({ shopState: state, messages: [message, reply], actions })
+    }, delay))
+  }
+
+  // Rush complete event
+  const totalDelay = rushOrders * 350 + 500
+  timeouts.push(setTimeout(() => {
+    onEvent({ done: true, shopState: state })
+  }, totalDelay))
+
+  return () => timeouts.forEach(clearTimeout)
+}
