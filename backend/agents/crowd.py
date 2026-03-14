@@ -37,8 +37,8 @@ def _save_persona_cache(cache: dict) -> None:
     _PERSONA_CACHE_FILE.write_text(json.dumps(cache, indent=2))
 
 def _persona_cache_key(location: str, strategy: Strategy, num_personas: int, num_seeds: int) -> str:
-    """Hash the inputs that determine what personas look like."""
-    raw = f"{location}|{strategy.menu_summary()}|{num_personas}|{num_seeds}"
+    """Hash on location + counts only — personas are reusable across concepts at the same city."""
+    raw = f"{location}|{num_personas}|{num_seeds}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -432,7 +432,7 @@ def generate_personas(
 ) -> list[Persona]:
     """
     Generate a full persona crowd, using a file cache to skip LLM calls on
-    repeat runs with the same location + menu + counts.
+    repeat runs at the same location + counts, regardless of concept.
 
     Cache is invalidated automatically when strategy or counts change.
     Delete .cache/personas.json to force a full regeneration.
@@ -473,9 +473,6 @@ DEMOGRAPHIC CONTEXT:
 - Income distribution: {income_dist}
 - Education: {education_dist}
 - Notable local traits: {traits}
-
-BUSINESS CONTEXT:
-{menu_summary}
 
 CRITICAL RULES FOR DIVERSITY:
 - Personas MUST match the statistical distribution above. If 42% of the population is 18-24, 
@@ -525,7 +522,6 @@ def generate_seed_personas(
         income_dist=json.dumps(demographics["income_distribution"]),
         education_dist=json.dumps(demographics["education_distribution"]),
         traits=", ".join(demographics.get("notable_traits", [])),
-        menu_summary=strategy.menu_summary(),
     )
 
     response = client.complete_json_list(
