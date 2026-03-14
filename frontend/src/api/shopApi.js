@@ -63,17 +63,22 @@ function normalizeShopState(raw) {
   }
 }
 
+// ─────────────────────────── Config ───────────────────────────────────
+
+const API_BASE = '/api'
+const MOCK_MODE = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mock') === '1'
+
 // ─────────────────────────── Live API calls ───────────────────────────
 
 export async function fetchShopState() {
-  const res = await fetch('/api/shop/state')
+  const res = await fetch(`${API_BASE}/shop/state`)
   if (!res.ok) throw new Error(`Shop state fetch failed: ${res.status}`)
   const raw = await res.json()
   return normalizeShopState(raw)
 }
 
 export async function sendOrder(message, customerName = 'Customer') {
-  const res = await fetch('/api/order', {
+  const res = await fetch(`${API_BASE}/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, customer_name: customerName }),
@@ -98,13 +103,99 @@ export async function sendOrder(message, customerName = 'Customer') {
 }
 
 export async function triggerRush() {
-  const res = await fetch('/api/shop/simulate-rush', { method: 'POST' })
+  const res = await fetch(`${API_BASE}/shop/simulate-rush`, { method: 'POST' })
   if (!res.ok) throw new Error(`Rush trigger failed: ${res.status}`)
   const raw = await res.json()
 
   return {
     shopState: normalizeShopState(raw.shop_state),
   }
+}
+
+// ─────────────────────────── New API calls ────────────────────────────
+
+// Fetch current rules
+export async function fetchRules() {
+  if (MOCK_MODE) return getMockRules()
+  const res = await fetch(`${API_BASE}/shop/rules`)
+  if (!res.ok) throw new Error('Failed to fetch rules')
+  return res.json()
+}
+
+// Update rules
+export async function updateRules(rules) {
+  if (MOCK_MODE) return rules
+  const res = await fetch(`${API_BASE}/shop/rules`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rules),
+  })
+  if (!res.ok) throw new Error('Failed to update rules')
+  return res.json()
+}
+
+// Send order on specific channel
+export async function sendChannelOrder(channel, message) {
+  if (MOCK_MODE) return mockChannelOrder(channel, message)
+  const res = await fetch(`${API_BASE}/shop/order`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel, message }),
+  })
+  if (!res.ok) throw new Error('Failed to send order')
+  return res.json()
+}
+
+// Trigger a scenario
+export async function triggerScenario(scenario) {
+  if (MOCK_MODE) return mockTriggerScenario(scenario)
+  const res = await fetch(`${API_BASE}/shop/trigger-scenario`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  })
+  if (!res.ok) throw new Error('Failed to trigger scenario')
+  return res.json()
+}
+
+// ─────────────────────────── New mock helpers ─────────────────────────
+
+function getMockRules() {
+  return {
+    max_markup_pct: 0.25,
+    min_margin_multiplier: 1.10,
+    max_restock_spend_pct: 0.50,
+    min_cash_reserve: 50.0,
+    max_actions_per_cycle: 2,
+    cooldown_orders: 8,
+    periodic_review_interval: 5,
+    min_orders_for_trends: 8,
+    category_inventory: {
+      entree: { qty: 10, threshold: 4, max: 50 },
+      side: { qty: 8, threshold: 3, max: 30 },
+      drink: { qty: 15, threshold: 4, max: 50 },
+      dessert: { qty: 6, threshold: 3, max: 25 },
+    }
+  }
+}
+
+function mockChannelOrder(channel, message) {
+  const replies = {
+    walk_up: "Got it! Coming right up in about 5 minutes!",
+    text_order: "Order received! Estimated wait: 10-12 minutes. We'll text when ready.",
+    escalation: "I'm so sorry for the inconvenience. Let me make this right for you.",
+  }
+  return {
+    reply: replies[channel] ?? "Order received!",
+    shopState: null,
+    actions: [],
+  }
+}
+
+function mockTriggerScenario(scenario) {
+  if (scenario === 'rush') return { success: true, event: { type: 'rush', text: 'Rush triggered' } }
+  if (scenario === 'next_customer') return { success: true, event: null }
+  return { success: true }
 }
 
 // ─────────────────────────── Mock helpers ──────────────────────────────
