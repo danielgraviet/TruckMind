@@ -38,3 +38,6 @@ uv.lock
 .venv/
 node_modules
 dist
+
+.agents
+.claude
