@@ -454,6 +454,8 @@ async def place_order(req: OrderRequest):
         req.channel or "walk_up"
     )
 
+    shop_payload = shop.to_dict()
+
     _broadcast_interaction(
         shop=shop,
         customer_name=req.customer_name or "Customer",
@@ -461,6 +463,7 @@ async def place_order(req: OrderRequest):
         customer_message=req.message,
         cashier_message=cashier_msg,
         actions=actions,
+        shop_payload=shop_payload,
     )
 
     # Find the order object from the last action (if an order was placed)
@@ -474,7 +477,7 @@ async def place_order(req: OrderRequest):
         "cashier_message": cashier_msg,
         "order": order_dict,
         "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
-        "shop_state": shop.to_dict(),
+        "shop_state": shop_payload,
     }
 
 
@@ -546,8 +549,7 @@ async def simulate_rush():
             "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
         })
 
-        # Small delay to space out orders and let autonomous triggers fire
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0)
 
     return {
         "orders_processed": len(results),
@@ -599,9 +601,9 @@ def _broadcast_shop_event(event: str, data: dict):
             pass  # Drop events for slow consumers
 
 
-def _broadcast_shop_state(shop) -> None:
+def _broadcast_shop_state(shop, payload: Optional[dict] = None) -> None:
     if shop is not None:
-        _broadcast_shop_event("shop_state", shop.to_dict())
+        _broadcast_shop_event("shop_state", payload or shop.to_dict())
 
 
 def _broadcast_interaction(
@@ -612,6 +614,7 @@ def _broadcast_interaction(
     customer_message: str,
     cashier_message: str,
     actions: list,
+    shop_payload: Optional[dict] = None,
 ) -> None:
     customer_timestamp = datetime.utcnow().isoformat()
     _broadcast_shop_event("customer_message", {
@@ -650,7 +653,7 @@ def _broadcast_interaction(
             "sequence": index,
         })
 
-    _broadcast_shop_state(shop)
+    _broadcast_shop_state(shop, shop_payload)
 
 
 async def _shop_stream_generator():
@@ -730,7 +733,7 @@ async def trigger_scenario(req: ScenarioRequest):
                 cashier_message=cashier_msg,
                 actions=actions,
             )
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
 
         return {
             "scenario": "rush",

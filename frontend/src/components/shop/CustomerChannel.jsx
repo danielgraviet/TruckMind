@@ -54,6 +54,7 @@ export default function CustomerChannel({
   onSend,
   isEscalation = false,
   automationActive = false,
+  isSending = false,
 }) {
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
@@ -68,7 +69,7 @@ export default function CustomerChannel({
   const handleSubmit = (e) => {
     e.preventDefault()
     const text = input.trim()
-    if (!text) return
+    if (!text || isSending) return
     onSend?.(text, channel)
     setInput('')
   }
@@ -120,14 +121,15 @@ export default function CustomerChannel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={isEscalation ? 'Respond to escalation...' : 'Type a message...'}
+          disabled={isSending}
           className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors"
         />
         <button
           type="submit"
-          disabled={!input.trim()}
+          disabled={!input.trim() || isSending}
           className={`${theme.accent} ${theme.accentHover} disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors`}
         >
-          Send
+          {isSending ? 'Sending...' : 'Send'}
         </button>
       </form>
     </div>

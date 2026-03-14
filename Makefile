@@ -1,4 +1,7 @@
-.PHONY: dev dev-backend dev-frontend
+.PHONY: sync-backend dev dev-backend dev-frontend
+
+sync-backend:
+	uv sync --project backend
 
 dev:
 	@trap 'kill 0' EXIT; \

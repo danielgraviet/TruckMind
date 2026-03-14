@@ -1,4 +1,6 @@
-fastapi
-uvicorn[standard]
+anthropic>=0.84.0
+fastapi>=0.135.1
+httpx>=0.28.1
 python-dotenv
-anthropic
+requests
+uvicorn[standard]

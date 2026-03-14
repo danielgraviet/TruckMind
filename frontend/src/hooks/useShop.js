@@ -49,6 +49,11 @@ const initialState = {
   rushMode: false,
   rushCountdown: 0,
   streamConnected: false,
+  channelSending: {
+    walk_up: false,
+    text_order: false,
+    escalation: false,
+  },
 }
 
 function mergeRecentById(existing = [], incoming = [], limit = 10) {
@@ -64,6 +69,20 @@ function mergeRecentById(existing = [], incoming = [], limit = 10) {
     }
   }
   return merged.slice(-limit)
+}
+
+function appendChannelMessage(existing = [], incoming) {
+  if (!incoming) return existing
+
+  const duplicate = existing.some((candidate) => (
+    candidate.role === incoming.role &&
+    candidate.channel === incoming.channel &&
+    candidate.text === incoming.text &&
+    Math.abs(new Date(candidate.timestamp).getTime() - new Date(incoming.timestamp).getTime()) < 3000
+  ))
+
+  if (duplicate) return existing
+  return [...existing, incoming]
 }
 
 function pickRandom(items = []) {
@@ -172,7 +191,7 @@ function reducer(state, action) {
       const channelKey = channel === 'walk_up' ? 'walkUpMessages'
                        : channel === 'text_order' ? 'textMessages'
                        : 'escalationMessages'
-      return { ...state, [channelKey]: [...state[channelKey], message] }
+      return { ...state, [channelKey]: appendChannelMessage(state[channelKey], message) }
     }
 
     case 'START_RUSH':
@@ -187,6 +206,26 @@ function reducer(state, action) {
 
     case 'SET_STREAM_CONNECTED':
       return { ...state, streamConnected: action.payload }
+
+    case 'SET_CHANNEL_SENDING':
+      return {
+        ...state,
+        channelSending: {
+          ...state.channelSending,
+          [action.payload.channel]: action.payload.value,
+        },
+      }
+
+    case 'UPSERT_ORDERS': {
+      if (!state.shopState) return state
+      return {
+        ...state,
+        shopState: {
+          ...state.shopState,
+          recentOrders: mergeRecentById(state.shopState.recentOrders, action.payload, 10),
+        },
+      }
+    }
 
     default:
       return state
@@ -299,6 +338,11 @@ export function useShop(strategy, forceMock = false) {
         dispatch({ type: 'UPSERT_ACTIONS', payload: [action] })
         dispatch({ type: 'ADD_LIVE_EVENT', payload: liveEventFromAction(action) })
       },
+      onOrder: (order) => {
+        if (order) {
+          dispatch({ type: 'UPSERT_ORDERS', payload: [order] })
+        }
+      },
       onError: () => {
         dispatch({ type: 'SET_STREAM_CONNECTED', payload: false })
       },
@@ -323,8 +367,11 @@ export function useShop(strategy, forceMock = false) {
     if (!text.trim()) return
     const now = new Date().toISOString()
     const cur = stateRef.current
+    const customerName = channel === 'text_order' ? 'SMS Customer' : 'Walk-up Customer'
 
     try {
+      dispatch({ type: 'SET_CHANNEL_SENDING', payload: { channel, value: true } })
+
       if (cur.mockMode) {
         const customerMsg = { id: Date.now(), role: 'customer', text, channel, timestamp: now }
         dispatch({ type: 'ADD_CHANNEL_MESSAGE', payload: { channel, message: customerMsg } })
@@ -335,7 +382,7 @@ export function useShop(strategy, forceMock = false) {
           : (() => {
               const result = mockSendOrder(cur.shopState, text, {
                 channel,
-                customerName: channel === 'text_order' ? 'SMS Customer' : 'Walk-up Customer',
+                customerName,
               })
               return {
                 reply: result.cashierReply,
@@ -361,9 +408,51 @@ export function useShop(strategy, forceMock = false) {
           }))
         }
       } else {
-        await sendChannelOrder(channel, text)
+        const customerMsg = { id: `pending-${Date.now()}`, role: 'customer', text, channel, timestamp: now }
+        dispatch({ type: 'ADD_CHANNEL_MESSAGE', payload: { channel, message: customerMsg } })
+        dispatch({ type: 'ADD_LIVE_EVENT', payload: { type: 'order', channel, text, timestamp: now } })
+
+        const response = await sendChannelOrder(channel, text)
+
+        dispatch({
+          type: 'ADD_CHANNEL_MESSAGE',
+          payload: {
+            channel,
+            message: {
+              id: `reply-${Date.now()}`,
+              role: 'cashier',
+              text: response.reply,
+              channel,
+              timestamp: new Date().toISOString(),
+            },
+          },
+        })
+        if (response.shopState) dispatch({ type: 'SHOP_UPDATE', payload: response.shopState })
+        if (response.actions?.length) {
+          dispatch({ type: 'UPSERT_ACTIONS', payload: response.actions })
+          response.actions.forEach((action) => dispatch({
+            type: 'ADD_LIVE_EVENT',
+            payload: liveEventFromAction(action, channel),
+          }))
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      dispatch({
+        type: 'ADD_CHANNEL_MESSAGE',
+        payload: {
+          channel,
+          message: {
+            id: `error-${Date.now()}`,
+            role: 'cashier',
+            text: 'Order delayed. Try again in a moment.',
+            channel,
+            timestamp: new Date().toISOString(),
+          },
+        },
+      })
+    } finally {
+      dispatch({ type: 'SET_CHANNEL_SENDING', payload: { channel, value: false } })
+    }
   }, [])
 
   // Customer trickle - in demo mode, auto-generate customers
@@ -588,5 +677,6 @@ export function useShop(strategy, forceMock = false) {
     startTrickle,
     startRush,
     streamConnected: state.streamConnected,
+    channelSending: state.channelSending,
   }
 }
