@@ -1,6 +1,45 @@
 // ─────────────────────────── Normalize backend → frontend ─────────────
 
 let _normActionId = 1000
+let _normOrderId = 1000
+
+function normalizeOrder(raw, fallback = {}) {
+  if (!raw) return null
+
+  const rawItems = Array.isArray(raw.items)
+    ? raw.items
+    : raw.item
+      ? [raw.item]
+      : []
+
+  const items = rawItems.map((item) => {
+    if (typeof item === 'string') return { name: item }
+    return {
+      name: item.name ?? item.item ?? 'Item',
+      price: item.price ?? item.total_price ?? item.total ?? null,
+    }
+  })
+
+  return {
+    id: raw.id ?? `order-${_normOrderId++}`,
+    timestamp: raw.timestamp ?? new Date().toISOString(),
+    customerName: raw.customerName ?? raw.customer_name ?? fallback.customerName ?? 'Customer',
+    channel: raw.channel ?? fallback.channel,
+    items,
+    total: raw.total ?? raw.total_price ?? raw.price ?? fallback.total ?? 0,
+    status: raw.status ?? fallback.status ?? 'pending',
+  }
+}
+
+function normalizeAction(raw) {
+  return {
+    id: raw.id ?? `action-${_normActionId++}`,
+    type: raw.action_type ?? raw.type,
+    description: raw.description,
+    details: typeof raw.details === 'string' ? raw.details : JSON.stringify(raw.details ?? ''),
+    timestamp: raw.timestamp ?? Date.now(),
+  }
+}
 
 function normalizeShopState(raw) {
   if (!raw) return null
@@ -42,19 +81,15 @@ function normalizeShopState(raw) {
   }
 
   // Normalize actions: backend uses action_type (no id/timestamp)
-  const recentActions = (raw.recent_actions ?? raw.recentActions ?? []).map(a => ({
-    id: a.id ?? `action-${_normActionId++}`,
-    type: a.action_type ?? a.type,
-    description: a.description,
-    details: typeof a.details === 'string' ? a.details : JSON.stringify(a.details ?? ''),
-    timestamp: a.timestamp ?? Date.now(),
-  }))
+  const recentActions = (raw.recent_actions ?? raw.recentActions ?? []).map(normalizeAction)
 
   return {
     activeMenu,
     inventory,
     currentPrices,
-    recentOrders: raw.recent_orders ?? raw.recentOrders ?? [],
+    recentOrders: (raw.recent_orders ?? raw.recentOrders ?? [])
+      .map(order => normalizeOrder(order))
+      .filter(Boolean),
     recentActions,
     removedItems: raw.removed_items ?? raw.removedItems ?? [],
     totalRevenue: raw.total_revenue ?? raw.totalRevenue ?? 0,
@@ -87,13 +122,7 @@ export async function sendOrder(message, customerName = 'Customer') {
   const raw = await res.json()
 
   // Map backend field names to what the reducer expects
-  const actions = (raw.autonomous_actions ?? []).map(a => ({
-    id: a.id ?? `action-${_normActionId++}`,
-    type: a.action_type ?? a.type,
-    description: a.description,
-    details: typeof a.details === 'string' ? a.details : JSON.stringify(a.details ?? ''),
-    timestamp: a.timestamp ?? Date.now(),
-  }))
+  const actions = (raw.autonomous_actions ?? []).map(normalizeAction)
 
   return {
     shopState: normalizeShopState(raw.shop_state),
@@ -137,13 +166,18 @@ export async function updateRules(rules) {
 // Send order on specific channel
 export async function sendChannelOrder(channel, message) {
   if (MOCK_MODE) return mockChannelOrder(channel, message)
-  const res = await fetch(`${API_BASE}/shop/order`, {
+  const res = await fetch(`${API_BASE}/order`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ channel, message }),
   })
   if (!res.ok) throw new Error('Failed to send order')
-  return res.json()
+  const raw = await res.json()
+  return {
+    reply: raw.cashier_message,
+    shopState: normalizeShopState(raw.shop_state),
+    actions: (raw.autonomous_actions ?? []).map(normalizeAction),
+  }
 }
 
 // Trigger a scenario
@@ -247,7 +281,7 @@ function findMenuItem(shopState, message) {
   )
 }
 
-export function mockSendOrder(shopState, message) {
+export function mockSendOrder(shopState, message, options = {}) {
   const matched = findMenuItem(shopState, message)
   const now = Date.now()
   const newState = { ...shopState }
@@ -284,7 +318,15 @@ export function mockSendOrder(shopState, message) {
   newState.totalOrders = (newState.totalOrders ?? 0) + 1
   newState.cashOnHand = (newState.cashOnHand ?? 500) + price
 
-  const order = { id: nextActionId(), item: matched, price, timestamp: now }
+  const order = {
+    id: nextActionId(),
+    customerName: options.customerName ?? pickRandom(CUSTOMER_NAMES),
+    channel: options.channel ?? 'walk_up',
+    items: [{ name: matched, price }],
+    total: price,
+    status: 'preparing',
+    timestamp: now,
+  }
   newState.recentOrders = [...(newState.recentOrders ?? []), order]
 
   actions.push({
@@ -352,12 +394,24 @@ export function mockSimulateRush(shopState, onEvent) {
       const stock = { ...inv[item] }
       stock.quantity -= 1
       inv[item] = stock
+
+      const order = {
+        id: nextActionId(),
+        customerName,
+        channel: 'walk_up',
+        items: [{ name: item, price }],
+        total: price,
+        status: 'preparing',
+        timestamp: now,
+      }
+
       state = {
         ...state,
         inventory: inv,
         totalRevenue: state.totalRevenue + price,
         totalOrders: state.totalOrders + 1,
         cashOnHand: state.cashOnHand + price,
+        recentOrders: [...(state.recentOrders ?? []), order],
       }
 
       orderCounts[item] = (orderCounts[item] ?? 0) + 1

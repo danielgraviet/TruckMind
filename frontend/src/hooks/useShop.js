@@ -182,7 +182,9 @@ export function useShop(strategy, forceMock = false) {
       }
     }
 
-    init()
+    init().then(() => {
+      if (!cancelled) dispatch({ type: 'SET_TRICKLE', payload: true })
+    })
     return () => { cancelled = true }
   }, [strategy, forceMock])
 
@@ -209,17 +211,40 @@ export function useShop(strategy, forceMock = false) {
   // Send message on specific channel
   const handleChannelMessage = useCallback(async (channel, text) => {
     if (!text.trim()) return
-    const customerMsg = { id: Date.now(), role: 'customer', text, channel, timestamp: new Date().toISOString() }
+    const now = new Date().toISOString()
+    const cur = stateRef.current
+    const customerMsg = { id: Date.now(), role: 'customer', text, channel, timestamp: now }
     dispatch({ type: 'ADD_CHANNEL_MESSAGE', payload: { channel, message: customerMsg } })
-    dispatch({ type: 'ADD_LIVE_EVENT', payload: { type: 'order', channel, text, timestamp: new Date().toISOString() } })
+    dispatch({ type: 'ADD_LIVE_EVENT', payload: { type: 'order', channel, text, timestamp: now } })
 
     try {
-      const response = await sendChannelOrder(channel, text)
+      const response = cur.mockMode && cur.shopState && channel !== 'escalation'
+        ? (() => {
+            const result = mockSendOrder(cur.shopState, text, {
+              channel,
+              customerName: channel === 'text_order' ? 'SMS Customer' : 'Walk-up Customer',
+            })
+            return {
+              reply: result.cashierReply,
+              shopState: result.shopState,
+              actions: result.actions,
+            }
+          })()
+        : await sendChannelOrder(channel, text)
       const cashierMsg = { id: Date.now() + 1, role: 'cashier', text: response.reply, channel, timestamp: new Date().toISOString() }
       dispatch({ type: 'ADD_CHANNEL_MESSAGE', payload: { channel, message: cashierMsg } })
       if (response.shopState) dispatch({ type: 'SHOP_UPDATE', payload: response.shopState })
       if (response.actions?.length) {
-        response.actions.forEach(a => dispatch({ type: 'ADD_LIVE_EVENT', payload: { ...a, timestamp: new Date().toISOString() } }))
+        response.actions.forEach(a => dispatch({
+          type: 'ADD_LIVE_EVENT',
+          payload: {
+            type: a.type === 'adjust_price' ? 'pricing' : a.type,
+            channel,
+            text: a.description,
+            details: a.details,
+            timestamp: a.timestamp ?? new Date().toISOString(),
+          },
+        }))
       }
     } catch { /* ignore */ }
   }, [])
@@ -231,9 +256,24 @@ export function useShop(strategy, forceMock = false) {
 
   // Rush: start rush mode (4x trickle for 60 seconds)
   const startRush = useCallback(async () => {
+    const cur = stateRef.current
+    if (!cur.shopState || cur.isRushing) return
+
     dispatch({ type: 'START_RUSH' })
     dispatch({ type: 'ADD_LIVE_EVENT', payload: { type: 'rush', text: 'RUSH MODE ACTIVATED', timestamp: new Date().toISOString() } })
-    if (!stateRef.current.mockMode) {
+    if (cur.mockMode) {
+      if (rushCleanupRef.current) {
+        rushCleanupRef.current()
+        rushCleanupRef.current = null
+      }
+      rushCleanupRef.current = mockSimulateRush(cur.shopState, (event) => {
+        if (event.done) {
+          dispatch({ type: 'RUSH_DONE', payload: event })
+        } else {
+          dispatch({ type: 'RUSH_EVENT', payload: event })
+        }
+      })
+    } else {
       try { await triggerScenario('rush') } catch { /* ignore */ }
     }
   }, [])
@@ -256,17 +296,45 @@ export function useShop(strategy, forceMock = false) {
             if (result?.event) dispatch({ type: 'ADD_LIVE_EVENT', payload: result.event })
           } catch { /* ignore */ }
         } else {
-          // In demo mode, generate a synthetic customer event locally
+          // In demo mode, generate a synthetic customer + place an order
           const channels = ['walk_up', 'walk_up', 'walk_up', 'text_order', 'text_order', 'escalation']
           const channel = channels[Math.floor(Math.random() * channels.length)]
           const names = ["Alex S.", "Jordan M.", "Taylor B.", "Morgan W.", "Casey J.", "Riley G."]
           const name = names[Math.floor(Math.random() * names.length)]
+          const now = new Date().toISOString()
           dispatch({ type: 'ADD_LIVE_EVENT', payload: {
             type: 'customer_arrival',
             channel,
             text: `${name} arrived (${channel.replace('_', '-')})`,
-            timestamp: new Date().toISOString()
+            timestamp: now,
           }})
+          // Auto-place an order from this customer
+          const cur = stateRef.current
+          if (cur.shopState) {
+            const available = cur.shopState.activeMenu.filter(
+              n => !cur.shopState.removedItems?.includes(n) && (cur.shopState.inventory[n]?.quantity ?? 0) > 0
+            )
+            if (available.length > 0) {
+              const item = available[Math.floor(Math.random() * available.length)]
+              const result = mockSendOrder(cur.shopState, `Can I get a ${item}?`, {
+                channel,
+                customerName: name,
+              })
+              dispatch({ type: 'SHOP_UPDATE', payload: result.shopState })
+              if (result.actions?.length) {
+                result.actions.forEach(a => dispatch({
+                  type: 'ADD_LIVE_EVENT',
+                  payload: {
+                    type: a.type === 'adjust_price' ? 'pricing' : a.type,
+                    channel,
+                    text: a.description,
+                    details: a.details,
+                    timestamp: a.timestamp ?? now,
+                  },
+                }))
+              }
+            }
+          }
         }
         scheduleNext()
       }, delay)

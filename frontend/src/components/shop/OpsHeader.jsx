@@ -52,16 +52,18 @@ function MetricChip({ label, value, prefix = '', suffix = '', decimals = 0 }) {
 
 export default function OpsHeader({
   businessName = 'Food Truck',
-  isDemo = true,
-  isRush = false,
+  mockMode = true,
+  rushMode = false,
   rushCountdown = 0,
   shopState = {},
-  onRush,
-  onSectionChange,
+  customerTrickle = false,
+  onStartRush,
+  onToggleTrickle,
+  isRushing = false,
 }) {
-  const revenue = shopState.revenue ?? 0
+  const revenue = shopState.totalRevenue ?? 0
   const orders = shopState.totalOrders ?? 0
-  const cash = shopState.cash ?? 0
+  const cash = shopState.cashOnHand ?? 0
 
   const formatCountdown = useCallback((seconds) => {
     const m = Math.floor(seconds / 60)
@@ -88,8 +90,16 @@ export default function OpsHeader({
 
       {/* Right: Badges and Rush */}
       <div className="flex items-center gap-3 flex-shrink-0">
+        {/* Customer trickle indicator */}
+        {customerTrickle && (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Customers Active
+          </span>
+        )}
+
         {/* LIVE / DEMO badge */}
-        {isDemo ? (
+        {mockMode ? (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
             DEMO
           </span>
@@ -101,13 +111,14 @@ export default function OpsHeader({
         )}
 
         {/* Rush button / badge */}
-        {isRush ? (
+        {rushMode ? (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold animate-pulse bg-red-900 text-red-200 border border-red-700">
             RUSH MODE {formatCountdown(rushCountdown)}
           </span>
         ) : (
           <button
-            onClick={onRush}
+            onClick={onStartRush}
+            disabled={isRushing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-gray-300 border border-gray-700 hover:bg-red-900/50 hover:text-red-200 hover:border-red-700 transition-colors"
           >
             Rush Mode
