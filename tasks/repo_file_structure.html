@@ -1,0 +1,76 @@
+<style>
+.tree { font-family: var(--font-mono); font-size: 13px; line-height: 1.9; color: var(--color-text-primary); }
+.dir { font-weight: 500; }
+.comment { color: var(--color-text-tertiary); font-family: var(--font-sans); font-size: 12px; }
+.section { color: var(--color-text-secondary); font-weight: 500; font-size: 12px; font-family: var(--font-sans); margin-top: 12px; display: inline-block; padding: 2px 8px; background: var(--color-background-secondary); border-radius: 4px; }
+</style>
+<div class="tree">
+<pre style="margin:0;white-space:pre;overflow-x:auto">
+<span class="dir">truckmind/</span>
+├── <span class="dir">backend/</span>
+│   ├── <span class="dir">agents/</span>                  <span class="comment">← the four AI agents</span>
+│   │   ├── __init__.py
+│   │   ├── strategist.py          <span class="comment">← concept → strategy</span>
+│   │   ├── crowd.py               <span class="comment">← census + persona generation</span>
+│   │   ├── simulator.py           <span class="comment">← two-tier simulation engine</span>
+│   │   └── shop.py                <span class="comment">← live operations + autonomous decisions</span>
+│   │
+│   ├── <span class="dir">models/</span>                  <span class="comment">← data contracts (shared truth)</span>
+│   │   ├── __init__.py
+│   │   └── schema.py              <span class="comment">← all dataclasses + enums</span>
+│   │
+│   ├── <span class="dir">utils/</span>                   <span class="comment">← shared infrastructure</span>
+│   │   ├── __init__.py
+│   │   ├── llm_client.py          <span class="comment">← Anthropic API wrapper + mock</span>
+│   │   └── census.py              <span class="comment">← Census API integration</span>
+│   │
+│   ├── <span class="dir">engine/</span>                  <span class="comment">← orchestration</span>
+│   │   ├── __init__.py
+│   │   └── pipeline.py            <span class="comment">← full pipeline + CLI entry point</span>
+│   │
+│   ├── server.py                  <span class="comment">← FastAPI app (SSE + REST endpoints)</span>
+│   └── requirements.txt
+│
+├── <span class="dir">frontend/</span>
+│   ├── <span class="dir">src/</span>
+│   │   ├── <span class="dir">components/</span>
+│   │   │   ├── <span class="dir">pipeline/</span>           <span class="comment">← Phase 1-3 UI</span>
+│   │   │   │   ├── ConceptInput.jsx       <span class="comment">← "describe your food truck"</span>
+│   │   │   │   ├── StrategyCard.jsx       <span class="comment">← menu + pricing display</span>
+│   │   │   │   ├── ReactionBoard.jsx      <span class="comment">← 200-card persona grid</span>
+│   │   │   │   ├── PersonaCard.jsx        <span class="comment">← single persona card (flips)</span>
+│   │   │   │   └── SimulationStats.jsx    <span class="comment">← interest rate, revenue projection</span>
+│   │   │   │
+│   │   │   ├── <span class="dir">shop/</span>               <span class="comment">← Phase 4 UI</span>
+│   │   │   │   ├── ChatPanel.jsx          <span class="comment">← customer-facing ordering chat</span>
+│   │   │   │   ├── InventoryBars.jsx      <span class="comment">← stock levels per item</span>
+│   │   │   │   ├── PriceTable.jsx         <span class="comment">← menu with dynamic overrides</span>
+│   │   │   │   ├── RevenueCounter.jsx     <span class="comment">← orders + revenue ticker</span>
+│   │   │   │   └── ActionFeed.jsx         <span class="comment">← autonomous decision log</span>
+│   │   │   │
+│   │   │   └── <span class="dir">shared/</span>             <span class="comment">← reusable pieces</span>
+│   │   │       ├── PhaseIndicator.jsx     <span class="comment">← progress bar across phases</span>
+│   │   │       └── LoadingState.jsx
+│   │   │
+│   │   ├── <span class="dir">hooks/</span>
+│   │   │   ├── useSSE.js                  <span class="comment">← EventSource wrapper for pipeline</span>
+│   │   │   └── useShop.js                 <span class="comment">← REST calls for ordering</span>
+│   │   │
+│   │   ├── <span class="dir">pages/</span>
+│   │   │   ├── PipelinePage.jsx           <span class="comment">← phases 1-3 (strategy → simulation)</span>
+│   │   │   └── ShopPage.jsx              <span class="comment">← phase 4 (two-panel dashboard)</span>
+│   │   │
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   │
+│   ├── index.html
+│   ├── tailwind.config.js
+│   ├── vite.config.js
+│   └── package.json
+│
+├── .env.example
+├── .gitignore
+├── README.md
+└── Makefile                       <span class="comment">← dev commands (see below)</span>
+</pre>
+</div>
