@@ -4,15 +4,21 @@ title: Demo Polish & Presentation
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:31'
+updated_date: '2026-03-14 17:32'
 labels:
   - demo
   - frontend
   - p0-blocker
   - everyone
-dependencies: []
+dependencies:
+  - TASK-2
+  - TASK-5
+  - TASK-6
+  - TASK-7
 references:
   - tasks/TICKET-7-demo-polish.md
 priority: high
+milestone: podium-hackathon-2026
 ---
 
 ## Description

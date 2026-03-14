@@ -4,15 +4,18 @@ title: Census API Integration
 status: To Do
 assignee: []
 created_date: '2026-03-14 17:29'
+updated_date: '2026-03-14 17:32'
 labels:
   - backend
   - census
   - p1-important
   - persona-engineer
-dependencies: []
+dependencies:
+  - TASK-1
 references:
   - tasks/TICKET-3-census-api.md
 priority: medium
+milestone: podium-hackathon-2026
 ---
 
 ## Description
