@@ -1,4 +1,4 @@
-# podium-v.1# 🚚 TruckMind — An AI That Doesn't Just Advise. It Operates.
+# 🚚 TruckMind — An AI That Doesn't Just Advise. It Operates.
 
 > **"AI Runs the Shop"** — Podium Hackathon 2026
 
