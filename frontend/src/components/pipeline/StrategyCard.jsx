@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { Trophy } from 'lucide-react'
 
 export const POSITIONING_META = {
   value:   { label: 'Value',   color: 'text-blue-400',   border: 'border-blue-500/50',   ring: 'ring-blue-500',   bg: 'bg-blue-500/10' },
@@ -100,7 +101,7 @@ export function WinnerCard({ strategy, stats, rationale, isWinner = true }) {
           <h2 className="text-xl font-bold text-white">{strategy?.businessName}</h2>
           <p className="text-gray-400 text-sm mt-0.5 italic">"{strategy?.tagline}"</p>
         </div>
-        {isWinner && <span className="text-2xl shrink-0">🏆</span>}
+        {isWinner && <Trophy className="w-5 h-5 text-amber-400 shrink-0" />}
       </div>
 
       {rationale && (

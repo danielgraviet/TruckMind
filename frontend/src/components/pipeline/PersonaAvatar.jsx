@@ -62,9 +62,7 @@ const PersonaAvatar = React.memo(function PersonaAvatar({ persona, state, index 
       {/* Floating thought bubble */}
       <AnimatePresence>
         {showBubble && state?.sentiment && (
-          <ThoughtBubble key="bubble" emoji={
-            { excited: '🤩', positive: '😊', neutral: '😐', negative: '😕', hostile: '😠' }[state.sentiment]
-          } />
+          <ThoughtBubble key="bubble" sentiment={state.sentiment} />
         )}
       </AnimatePresence>
     </motion.div>
