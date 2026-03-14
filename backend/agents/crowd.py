@@ -429,25 +429,30 @@ def generate_personas(
     client: LLMClient,
     num_personas: int = 100,
     num_seeds: int = 20,
+    on_persona: Optional[callable] = None,
 ) -> list[Persona]:
     """
     Generate a full persona crowd, using a file cache to skip LLM calls on
     repeat runs at the same location + counts, regardless of concept.
 
-    Cache is invalidated automatically when strategy or counts change.
-    Delete .cache/personas.json to force a full regeneration.
+    on_persona(Persona) is called for each persona as it's created so the
+    server can stream them to the frontend in real time.
     """
     cache = _load_persona_cache()
     key = _persona_cache_key(location, strategy, num_personas, num_seeds)
 
     if key in cache:
         print(f"  Persona cache hit — loading {num_personas} personas from disk")
-        return [Persona.from_dict(d) for d in cache[key]]
+        personas = [Persona.from_dict(d) for d in cache[key]]
+        if on_persona:
+            for p in personas:
+                on_persona(p)
+        return personas
 
     print(f"  Persona cache miss — generating via LLM + expansion")
-    seeds = generate_seed_personas(location, strategy, client, num_seeds=num_seeds)
+    seeds = generate_seed_personas(location, strategy, client, num_seeds=num_seeds, on_persona=on_persona)
     demographics = get_demographics(location)
-    personas = expand_personas(seeds, num_personas, location, demographics)
+    personas = expand_personas(seeds, num_personas, location, demographics, on_persona=on_persona)
 
     cache[key] = [p.to_dict() for p in personas]
     _save_persona_cache(cache)
@@ -508,6 +513,7 @@ def generate_seed_personas(
     strategy: Strategy,
     client: LLMClient,
     num_seeds: int = 20,
+    on_persona: Optional[callable] = None,
 ) -> list[Persona]:
     """Generate seed personas via LLM, grounded in census demographics."""
     demographics = get_demographics(location)
@@ -537,7 +543,10 @@ def generate_seed_personas(
     personas = []
     for i, data in enumerate(response.parsed_json):
         try:
-            personas.append(_parse_persona(data, f"seed-{i:03d}"))
+            p = _parse_persona(data, f"seed-{i:03d}")
+            personas.append(p)
+            if on_persona:
+                on_persona(p)
         except (KeyError, ValueError) as e:
             print(f"Warning: skipping malformed persona {i}: {e}")
             continue
@@ -640,6 +649,7 @@ def expand_personas(
     target_count: int,
     location: str,
     demographics: Optional[dict] = None,
+    on_persona: Optional[callable] = None,
 ) -> list[Persona]:
     """
     Programmatically expand seed personas to target count.
@@ -663,9 +673,10 @@ def expand_personas(
         for v in range(variations_per_seed):
             if len(all_personas) >= target_count:
                 break
-
             variant = _create_variant(seed, v, rng, demographics, neighborhoods, location)
             all_personas.append(variant)
+            if on_persona:
+                on_persona(variant)
 
     # Fill any remaining gap with random combinations
     while len(all_personas) < target_count:
@@ -673,6 +684,8 @@ def expand_personas(
         v = len(all_personas)
         variant = _create_variant(base_seed, v, rng, demographics, neighborhoods, location)
         all_personas.append(variant)
+        if on_persona:
+            on_persona(variant)
     
     # lets adjust this to create the list, then return. this return signature feels clunky. 
 
