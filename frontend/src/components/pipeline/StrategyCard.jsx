@@ -30,20 +30,27 @@ function StrategySkeleton() {
 
 // ── Testing progress card (shown in the strategy strip) ───────────────
 
-export function StrategyTestCard({ strategy, isCurrent, isComplete, stats }) {
+export function StrategyTestCard({ strategy, isCurrent, isComplete, stats, onClick, isSelected }) {
   const pos = POSITIONING_META[strategy?.positioning] ?? POSITIONING_META.value
   const interestPct = stats ? `${(stats.interestRate * 100).toFixed(0)}%` : null
   const revenue     = stats ? `$${Math.round(stats.projectedDailyRevenue)}/day` : null
+  const isClickable = isComplete && !!onClick
 
   return (
     <motion.div
       animate={isCurrent ? { scale: 1.02 } : { scale: 1 }}
       transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+      onClick={isClickable ? onClick : undefined}
       className={[
-        'rounded-xl p-4 border transition-colors relative overflow-hidden',
+        'rounded-xl p-4 border transition-all relative overflow-hidden',
+        isClickable ? 'cursor-pointer' : '',
         isCurrent
           ? `bg-gray-900 ${pos.border} ring-1 ${pos.ring}`
-          : 'bg-gray-900 border-gray-800 opacity-60',
+          : isSelected
+            ? `bg-gray-900 ${pos.border} ring-2 ${pos.ring}`
+            : isComplete
+              ? 'bg-gray-900 border-gray-700 hover:border-gray-600'
+              : 'bg-gray-900 border-gray-800 opacity-60',
       ].join(' ')}
     >
       {isCurrent && (
@@ -74,11 +81,12 @@ export function StrategyTestCard({ strategy, isCurrent, isComplete, stats }) {
 
 // ── Winner result card (shown in complete phase) ──────────────────────
 
-export function WinnerCard({ strategy, stats, rationale }) {
+export function WinnerCard({ strategy, stats, rationale, isWinner = true }) {
   const pos = POSITIONING_META[strategy?.positioning] ?? POSITIONING_META.value
 
   return (
     <motion.div
+      key={strategy?.businessName}
       initial={{ scale: 0.96, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
       transition={{ type: 'spring', stiffness: 200, damping: 22 }}
@@ -87,12 +95,12 @@ export function WinnerCard({ strategy, stats, rationale }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className={`text-xs font-bold uppercase tracking-widest ${pos.color} mb-1`}>
-            {pos.label} · Best Strategy
+            {pos.label}{isWinner ? ' · Best Strategy' : ''}
           </div>
           <h2 className="text-xl font-bold text-white">{strategy?.businessName}</h2>
           <p className="text-gray-400 text-sm mt-0.5 italic">"{strategy?.tagline}"</p>
         </div>
-        <span className="text-2xl shrink-0">🏆</span>
+        {isWinner && <span className="text-2xl shrink-0">🏆</span>}
       </div>
 
       {rationale && (

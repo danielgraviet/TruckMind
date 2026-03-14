@@ -14,6 +14,7 @@ const initialState = {
   strategyResults: [],
   personas: [],
   personaStates: {},
+  strategyPersonaStates: [],   // personaStates snapshot per strategy index
   stats: null,
   isRunning: false,
 }
@@ -28,7 +29,14 @@ function reducer(state, action) {
 
       // When testingIndex changes, clear old reaction states so dots reset color
       const indexChanged = snap.testingIndex !== null && snap.testingIndex !== state.testingIndex
+      const phaseChangedToEval = snap.phase === 'evaluating' && state.phase === 'testing'
       const baseStates = indexChanged ? {} : { ...state.personaStates }
+
+      // Snapshot persona reactions for the strategy we just finished testing
+      const newStrategyPersonaStates = [...state.strategyPersonaStates]
+      if ((indexChanged || phaseChangedToEval) && state.testingIndex !== null) {
+        newStrategyPersonaStates[state.testingIndex] = { ...state.personaStates }
+      }
 
       const existingIds = new Set(state.personas.map(p => p.id))
       const newPersonas = [...state.personas]
@@ -55,16 +63,17 @@ function reducer(state, action) {
       return {
         ...state,
         phase: snap.phase,
-        strategy:        snap.strategy        ?? state.strategy,
-        strategyOptions: snap.strategyOptions?.length ? snap.strategyOptions : state.strategyOptions,
-        testingIndex:    snap.testingIndex    ?? state.testingIndex,
-        totalStrategies: snap.totalStrategies ?? state.totalStrategies,
-        winnerIndex:     snap.winnerIndex     ?? state.winnerIndex,
-        winnerRationale: snap.winnerRationale ?? state.winnerRationale,
-        strategyResults: snap.strategyResults?.length ? snap.strategyResults : state.strategyResults,
-        personas:        newPersonas,
-        personaStates:   newPersonaStates,
-        stats:           snap.stats ?? state.stats,
+        strategy:              snap.strategy        ?? state.strategy,
+        strategyOptions:       snap.strategyOptions?.length ? snap.strategyOptions : state.strategyOptions,
+        testingIndex:          snap.testingIndex    ?? state.testingIndex,
+        totalStrategies:       snap.totalStrategies ?? state.totalStrategies,
+        winnerIndex:           snap.winnerIndex     ?? state.winnerIndex,
+        winnerRationale:       snap.winnerRationale ?? state.winnerRationale,
+        strategyResults:       snap.strategyResults?.length ? snap.strategyResults : state.strategyResults,
+        personas:              newPersonas,
+        personaStates:         newPersonaStates,
+        strategyPersonaStates: newStrategyPersonaStates,
+        stats:                 snap.stats ?? state.stats,
       }
     }
 
