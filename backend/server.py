@@ -16,6 +16,7 @@ import json
 import uuid
 import random
 from collections import Counter
+from datetime import datetime
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -453,6 +454,15 @@ async def place_order(req: OrderRequest):
         req.channel or "walk_up"
     )
 
+    _broadcast_interaction(
+        shop=shop,
+        customer_name=req.customer_name or "Customer",
+        channel=req.channel or "walk_up",
+        customer_message=req.message,
+        cashier_message=cashier_msg,
+        actions=actions,
+    )
+
     # Find the order object from the last action (if an order was placed)
     order_dict = None
     for action in actions:
@@ -520,6 +530,15 @@ async def simulate_rush():
             handle_customer, shop, msg, client, customer_name
         )
 
+        _broadcast_interaction(
+            shop=shop,
+            customer_name=customer_name,
+            channel="walk_up",
+            customer_message=msg,
+            cashier_message=cashier_msg,
+            actions=actions,
+        )
+
         results.append({
             "customer": customer_name,
             "message": msg,
@@ -573,11 +592,65 @@ _shop_event_queues: list[asyncio.Queue] = []
 def _broadcast_shop_event(event: str, data: dict):
     """Push an event to all connected SSE subscribers."""
     msg = _fmt(event, data)
-    for q in _shop_event_queues:
+    for q in list(_shop_event_queues):
         try:
             q.put_nowait(msg)
         except asyncio.QueueFull:
             pass  # Drop events for slow consumers
+
+
+def _broadcast_shop_state(shop) -> None:
+    if shop is not None:
+        _broadcast_shop_event("shop_state", shop.to_dict())
+
+
+def _broadcast_interaction(
+    *,
+    shop,
+    customer_name: str,
+    channel: str,
+    customer_message: str,
+    cashier_message: str,
+    actions: list,
+) -> None:
+    customer_timestamp = datetime.utcnow().isoformat()
+    _broadcast_shop_event("customer_message", {
+        "customer_name": customer_name,
+        "channel": channel,
+        "text": customer_message,
+        "timestamp": customer_timestamp,
+    })
+    _broadcast_shop_event("cashier_message", {
+        "customer_name": customer_name,
+        "channel": channel,
+        "text": cashier_message,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+
+    order_payload = next(
+        (
+            action.details
+            for action in actions
+            if action.action_type.value == "take_order" and action.details
+        ),
+        None,
+    )
+    if order_payload:
+        _broadcast_shop_event("order", {
+            "order": order_payload,
+            "channel": channel,
+            "customer_name": customer_name,
+            "timestamp": order_payload.get("timestamp", customer_timestamp),
+        })
+
+    for index, action in enumerate(actions):
+        _broadcast_shop_event("shop_action", {
+            "action": action.to_dict(),
+            "timestamp": datetime.utcnow().isoformat(),
+            "sequence": index,
+        })
+
+    _broadcast_shop_state(shop)
 
 
 async def _shop_stream_generator():
@@ -613,7 +686,7 @@ async def shop_stream():
 async def trigger_scenario(req: ScenarioRequest):
     """
     Trigger predefined scenarios for demo purposes.
-    Scenarios: "rush", "angry_customer", "stock_out"
+    Scenarios: "rush", "angry_customer", "stock_out", "next_customer"
     """
     shop = active_shop.get("state")
     client = active_shop.get("client")
@@ -649,7 +722,14 @@ async def trigger_scenario(req: ScenarioRequest):
                 "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
             }
             results.append(result)
-            _broadcast_shop_event("order", result)
+            _broadcast_interaction(
+                shop=shop,
+                customer_name=customer.name,
+                channel=customer.channel,
+                customer_message=customer.opening_message,
+                cashier_message=cashier_msg,
+                actions=actions,
+            )
             await asyncio.sleep(0.05)
 
         return {
@@ -676,10 +756,47 @@ async def trigger_scenario(req: ScenarioRequest):
             "cashier_message": cashier_msg,
             "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
         }
-        _broadcast_shop_event("escalation", result)
+        _broadcast_interaction(
+            shop=shop,
+            customer_name=customer.name,
+            channel=customer.channel,
+            customer_message=customer.opening_message,
+            cashier_message=cashier_msg,
+            actions=actions,
+        )
 
         return {
             "scenario": "angry_customer",
+            "result": result,
+            "shop_state": shop.to_dict(),
+        }
+
+    elif req.scenario == "next_customer":
+        customer = generate_customer(
+            strategy=shop.strategy,
+            shop_state=shop,
+        )
+        cashier_msg, actions = await asyncio.to_thread(
+            handle_customer, shop, customer.opening_message, client,
+            customer.name, customer.channel
+        )
+
+        result = {
+            "customer": customer.to_dict(),
+            "cashier_message": cashier_msg,
+            "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
+        }
+        _broadcast_interaction(
+            shop=shop,
+            customer_name=customer.name,
+            channel=customer.channel,
+            customer_message=customer.opening_message,
+            cashier_message=cashier_msg,
+            actions=actions,
+        )
+
+        return {
+            "scenario": "next_customer",
             "result": result,
             "shop_state": shop.to_dict(),
         }
@@ -710,7 +827,14 @@ async def trigger_scenario(req: ScenarioRequest):
             "cashier_message": cashier_msg,
             "autonomous_actions": [a.to_dict() for a in actions if a.autonomous],
         }
-        _broadcast_shop_event("stock_out", result)
+        _broadcast_interaction(
+            shop=shop,
+            customer_name=customer.name,
+            channel=customer.channel,
+            customer_message=customer.opening_message,
+            cashier_message=cashier_msg,
+            actions=actions,
+        )
 
         return {
             "scenario": "stock_out",
@@ -721,5 +845,5 @@ async def trigger_scenario(req: ScenarioRequest):
     else:
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown scenario: '{req.scenario}'. Must be 'rush', 'angry_customer', or 'stock_out'.",
+            detail=f"Unknown scenario: '{req.scenario}'. Must be 'rush', 'angry_customer', 'stock_out', or 'next_customer'.",
         )

@@ -220,6 +220,7 @@ def handle_customer(
                 customer_name=customer_name,
                 items=order_items,
                 total_price=0.0,
+                channel=channel,
             )
             actions = process_order(shop_state, order, client)
             # Tag all actions with the channel
@@ -729,6 +730,13 @@ def _apply_action(shop_state: ShopState, action: ShopAction):
                 action.confidence = max(action.confidence - 0.2, 0.0)
 
             shop_state.current_prices[item_name] = new_price
+            action.details["applied_price"] = new_price
+            action.details["base_price"] = menu_item.base_price
+            action.details["price_delta"] = round(new_price - menu_item.base_price, 2)
+            action.details["price_delta_pct"] = (
+                round(((new_price - menu_item.base_price) / menu_item.base_price) * 100, 1)
+                if menu_item.base_price > 0 else 0.0
+            )
 
     elif action.action_type == ShopActionType.REMOVE_ITEM:
         item_name = details.get("item_name", "")
@@ -774,6 +782,10 @@ def _apply_action(shop_state: ShopState, action: ShopAction):
 
                 inv.quantity_remaining += quantity
                 shop_state.cash_on_hand -= cost
+                action.details["applied_quantity"] = quantity
+                action.details["applied_cost"] = round(cost, 2)
+                action.details["inventory_after"] = inv.quantity_remaining
+                action.details["cash_after"] = round(shop_state.cash_on_hand, 2)
 
                 # If it was removed due to stock, put it back
                 if item_name in shop_state.removed_items:

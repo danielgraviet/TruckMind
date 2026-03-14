@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { formatTime } from '../../utils/formatTime.js'
 
 const STATUS_STYLES = {
   pending:   { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30', label: 'Pending' },
@@ -11,12 +12,6 @@ const CHANNEL_LABELS = {
   walk_up: 'Walk-up',
   text_order: 'Text',
   escalation: 'Escalation',
-}
-
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  const d = new Date(timestamp)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 function OrderCard({ order }) {

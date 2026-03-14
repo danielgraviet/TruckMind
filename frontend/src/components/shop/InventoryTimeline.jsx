@@ -1,8 +1,4 @@
-function formatTime(timestamp) {
-  if (!timestamp) return ''
-  const d = new Date(timestamp)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
+import { formatTime } from '../../utils/formatTime.js'
 
 function isEmergency(action) {
   const desc = (action.description ?? '').toLowerCase()
@@ -13,11 +9,11 @@ function isEmergency(action) {
 }
 
 export default function InventoryTimeline({ actions = [] }) {
-  const restockActions = actions
-    .filter((a) => a.action_type === 'restock' || a.action_type === 'inventory')
+  const inventoryActions = actions
+    .filter((a) => ['restock', 'remove_item', 'reject_order'].includes(a.action_type ?? a.type))
     .reverse()
 
-  const recentCount = restockActions.filter((a) => {
+  const recentCount = inventoryActions.filter((a) => {
     if (!a.timestamp) return false
     const diff = Date.now() - new Date(a.timestamp).getTime()
     return diff < 3600000 // 1 hour
@@ -27,7 +23,7 @@ export default function InventoryTimeline({ actions = [] }) {
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-          Restock History
+          Autonomous Inventory Log
         </h3>
         {recentCount > 0 && (
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
@@ -36,17 +32,18 @@ export default function InventoryTimeline({ actions = [] }) {
         )}
       </div>
 
-      {restockActions.length === 0 ? (
-        <p className="text-sm text-gray-600 text-center py-6">No restocks yet.</p>
+      {inventoryActions.length === 0 ? (
+        <p className="text-sm text-gray-600 text-center py-6">No inventory decisions yet.</p>
       ) : (
         <div className="space-y-0.5 max-h-80 overflow-y-auto scrollbar-thin">
-          {restockActions.map((action, i) => {
+          {inventoryActions.map((action, i) => {
             const emergency = isEmergency(action)
+            const type = action.action_type ?? action.type
             return (
               <div
                 key={action.id ?? `restock-${i}`}
                 className={`flex items-start gap-3 py-2 ${
-                  i < restockActions.length - 1 ? 'border-b border-gray-800/50' : ''
+                  i < inventoryActions.length - 1 ? 'border-b border-gray-800/50' : ''
                 }`}
               >
                 {/* Timeline dot */}
@@ -61,6 +58,9 @@ export default function InventoryTimeline({ actions = [] }) {
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-gray-500 tabular-nums shrink-0">
                       {formatTime(action.timestamp)}
+                    </span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700 uppercase">
+                      {type.replace('_', ' ')}
                     </span>
                     {emergency && (
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">

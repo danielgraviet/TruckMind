@@ -14,6 +14,7 @@ import EscalationCard from '../components/shop/EscalationCard.jsx'
 import RulesForm from '../components/shop/RulesForm.jsx'
 import PricingTimeline from '../components/shop/PricingTimeline.jsx'
 import InventoryTimeline from '../components/shop/InventoryTimeline.jsx'
+import OwnerKpiStrip from '../components/shop/OwnerKpiStrip.jsx'
 
 // ─────────────────────── Existing component imports ─────────────────────
 import InventoryBars from '../components/shop/InventoryBars.jsx'
@@ -22,11 +23,17 @@ import PriceTable from '../components/shop/PriceTable.jsx'
 // ─────────────────────── Section: Operations ────────────────────────────
 
 function OpsSection({ shopState, strategy }) {
+  const latestEscalation = [...(shopState?.recentActions ?? [])].reverse().find((action) => action.escalated)
+
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <OrderQueue orders={shopState?.recentOrders ?? []} />
-      <AIDecisionCard decisions={shopState?.recentActions ?? []} />
-      <div className="col-span-2 grid grid-cols-3 gap-4">
+    <div className="space-y-4">
+      <OwnerKpiStrip shopState={shopState} />
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <OrderQueue orders={shopState?.recentOrders ?? []} />
+        <AIDecisionCard decisions={shopState?.recentActions ?? []} />
+      </div>
+      {latestEscalation && <EscalationCard action={latestEscalation} />}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <MonitoringPanel title="Scheduling" type="scheduling" strategy={strategy} />
         <MonitoringPanel title="Staffing" type="staffing" shopState={shopState} />
         <MonitoringPanel title="Routing" type="routing" orders={shopState?.recentOrders ?? []} />
@@ -37,28 +44,55 @@ function OpsSection({ shopState, strategy }) {
 
 // ─────────────────────── Section: Customer Service ──────────────────────
 
-function CustomerServiceSection({ walkUpMessages, textMessages, escalationMessages, onChannelMessage }) {
+function CustomerServiceSection({
+  walkUpMessages,
+  textMessages,
+  escalationMessages,
+  onChannelMessage,
+  automationActive,
+}) {
   return (
-    <div className="grid grid-cols-3 gap-4 h-full">
-      <CustomerChannel
-        channel="walk_up"
-        title="Walk-up Orders"
-        messages={walkUpMessages}
-        onSend={(msg) => onChannelMessage('walk_up', msg)}
-      />
-      <CustomerChannel
-        channel="text_order"
-        title="Text Orders"
-        messages={textMessages}
-        onSend={(msg) => onChannelMessage('text_order', msg)}
-      />
-      <CustomerChannel
-        channel="escalation"
-        title="Escalations"
-        messages={escalationMessages}
-        onSend={(msg) => onChannelMessage('escalation', msg)}
-        isEscalation={true}
-      />
+    <div className="space-y-4 h-full">
+      <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/40 via-slate-950 to-blue-950/40 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200">Customer Message Lanes</h2>
+            <p className="mt-1 text-sm text-gray-400">Customers flow in automatically, and the AI cashier replies in-channel as decisions happen.</p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] ${
+            automationActive
+              ? 'border border-emerald-500/30 bg-emerald-500/15 text-emerald-300'
+              : 'border border-gray-800 bg-gray-900 text-gray-500'
+          }`}>
+            {automationActive ? 'Autopilot Live' : 'Standby'}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 h-full">
+        <CustomerChannel
+          channel="walk_up"
+          title="Walk-up Orders"
+          messages={walkUpMessages}
+          onSend={(msg) => onChannelMessage('walk_up', msg)}
+          automationActive={automationActive}
+        />
+        <CustomerChannel
+          channel="text_order"
+          title="Text Orders"
+          messages={textMessages}
+          onSend={(msg) => onChannelMessage('text_order', msg)}
+          automationActive={automationActive}
+        />
+        <CustomerChannel
+          channel="escalation"
+          title="Escalations"
+          messages={escalationMessages}
+          onSend={(msg) => onChannelMessage('escalation', msg)}
+          isEscalation={true}
+          automationActive={automationActive}
+        />
+      </div>
     </div>
   )
 }
@@ -71,6 +105,7 @@ function InventorySection({ shopState }) {
       <InventoryBars
         inventory={shopState?.inventory ?? {}}
         currentPrices={shopState?.currentPrices ?? {}}
+        removedItems={shopState?.removedItems ?? []}
       />
       <InventoryTimeline actions={shopState?.recentActions ?? []} />
     </div>
@@ -83,19 +118,17 @@ function PricingSection({ shopState, strategy }) {
   return (
     <div className="space-y-4">
       <PriceTable
+        menu={strategy?.menu ?? []}
         currentPrices={shopState?.currentPrices ?? {}}
         inventory={shopState?.inventory ?? {}}
+        actions={shopState?.recentActions ?? []}
       />
-      <PricingTimeline actions={shopState?.recentActions ?? []} menu={strategy?.menu ?? []} />
+      <PricingTimeline
+        actions={shopState?.recentActions ?? []}
+        menu={strategy?.menu ?? []}
+        currentPrices={shopState?.currentPrices ?? {}}
+      />
     </div>
-  )
-}
-
-// ─────────────────────── Section: Rules ─────────────────────────────────
-
-function RulesSection({ rules, onSave }) {
-  return (
-    <RulesForm rules={rules} onSave={onSave} />
   )
 }
 
@@ -138,7 +171,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
     sendMessage, simulateRush,
     rules, liveEvents, walkUpMessages, textMessages, escalationMessages,
     rushMode, rushCountdown, customerTrickle,
-    loadRules, saveRules, handleChannelMessage, startTrickle, startRush,
+    loadRules, saveRules, handleChannelMessage, startTrickle, startRush, streamConnected,
   } = useShop(strategy, forceMock)
 
   const businessName = strategy?.businessName ?? 'Your Food Truck'
@@ -176,6 +209,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
               textMessages={textMessages}
               escalationMessages={escalationMessages}
               onChannelMessage={handleChannelMessage}
+              automationActive={customerTrickle && (mockMode || streamConnected)}
             />
           )}
           {activeSection === 'inventory' && (
@@ -185,7 +219,7 @@ export default function ShopPage({ strategy, stats, forceMock }) {
             <PricingSection shopState={shopState} strategy={strategy} />
           )}
           {activeSection === 'rules' && (
-            <RulesSection rules={rules} onSave={saveRules} />
+            <RulesForm rules={rules} onSave={saveRules} />
           )}
         </main>
 

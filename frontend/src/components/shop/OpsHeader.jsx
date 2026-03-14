@@ -62,6 +62,8 @@ export default function OpsHeader({
   isRushing = false,
 }) {
   const revenue = shopState.totalRevenue ?? 0
+  const cogs = shopState.totalCogs ?? 0
+  const profit = shopState.grossProfit ?? 0
   const orders = shopState.totalOrders ?? 0
   const cash = shopState.cashOnHand ?? 0
 
@@ -82,6 +84,10 @@ export default function OpsHeader({
       {/* Center: Metrics */}
       <div className="flex-1 flex items-center justify-center gap-1">
         <MetricChip label="Revenue" value={revenue} prefix="$" decimals={2} />
+        <div className="w-px h-6 bg-gray-800" />
+        <MetricChip label="COGS" value={cogs} prefix="$" decimals={2} />
+        <div className="w-px h-6 bg-gray-800" />
+        <MetricChip label="Profit" value={profit} prefix="$" decimals={2} />
         <div className="w-px h-6 bg-gray-800" />
         <MetricChip label="Orders" value={orders} decimals={0} />
         <div className="w-px h-6 bg-gray-800" />

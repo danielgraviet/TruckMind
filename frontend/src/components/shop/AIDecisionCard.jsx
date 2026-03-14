@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ConfidenceBar from './ConfidenceBar.jsx'
 
 const TYPE_STYLES = {
   pricing:   { bg: 'bg-blue-950', border: 'border-blue-800', accent: 'text-blue-400', bar: 'bg-blue-500' },
@@ -11,26 +12,10 @@ const TYPE_STYLES = {
 
 const DEFAULT_STYLE = { bg: 'bg-gray-900', border: 'border-gray-700', accent: 'text-gray-400', bar: 'bg-gray-500' }
 
-function ConfidenceBar({ confidence = 1, barClass = 'bg-indigo-500' }) {
-  const pct = Math.round(confidence * 100)
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <motion.div
-          className={`h-full rounded-full ${barClass}`}
-          initial={false}
-          animate={{ width: `${pct}%` }}
-          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-        />
-      </div>
-      <span className="text-[10px] text-gray-500 tabular-nums w-8 text-right">{pct}%</span>
-    </div>
-  )
-}
-
 function DecisionItem({ decision }) {
   const [expanded, setExpanded] = useState(false)
-  const style = TYPE_STYLES[decision.action_type] ?? DEFAULT_STYLE
+  const actionType = decision.action_type ?? decision.type
+  const style = TYPE_STYLES[actionType] ?? DEFAULT_STYLE
 
   return (
     <motion.div
@@ -47,7 +32,7 @@ function DecisionItem({ decision }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className={`text-[10px] font-semibold uppercase ${style.accent}`}>
-              {decision.action_type}
+              {actionType}
             </span>
             {decision.escalated && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
@@ -124,7 +109,10 @@ function DecisionItem({ decision }) {
 }
 
 export default function AIDecisionCard({ decisions = [] }) {
-  const visible = decisions.slice(-5).reverse()
+  const visible = decisions
+    .filter((decision) => decision.autonomous !== false)
+    .slice(-5)
+    .reverse()
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
