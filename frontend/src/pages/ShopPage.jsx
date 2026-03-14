@@ -87,11 +87,11 @@ function ShopSkeleton() {
 
 // ─────────────────────── ShopPage ─────────────────────────────────────
 
-export default function ShopPage({ strategy, stats }) {
+export default function ShopPage({ strategy, stats, forceMock }) {
   const {
     shopState, messages, isLoading, isRushing, isSending, mockMode,
     sendMessage, simulateRush,
-  } = useShop(strategy)
+  } = useShop(strategy, forceMock)
 
   const businessName = strategy?.businessName ?? 'Your Food Truck'
   const tagline = strategy?.tagline ?? 'Live Operations'

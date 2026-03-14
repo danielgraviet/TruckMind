@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useSimulation } from '../hooks/useSimulation.js'
 import ConceptInput    from '../components/pipeline/ConceptInput.jsx'
 import StrategyCard, { StrategyTestCard, WinnerCard } from '../components/pipeline/StrategyCard.jsx'
@@ -34,6 +35,13 @@ export default function PipelinePage({ onLaunch }) {
   const isTesting   = phase === 'testing'
   const isEval      = phase === 'evaluating'
   const isComplete  = phase === 'complete'
+
+  // Auto-launch 2.5s after evaluation completes — no human click needed
+  useEffect(() => {
+    if (!isComplete || !onLaunch || !strategy || !stats) return
+    const id = setTimeout(() => onLaunch(strategy, stats), 2500)
+    return () => clearTimeout(id)
+  }, [isComplete, strategy, stats, onLaunch])
   const hasOptions  = strategyOptions.length > 0
   const showStrip   = hasOptions && (isTesting || isEval || isComplete || phase === 'simulation')
 
@@ -126,17 +134,16 @@ export default function PipelinePage({ onLaunch }) {
             </div>
           )}
 
-          {/* Launch button */}
-          {isComplete && onLaunch && (
-            <div className="flex justify-center pt-4 pb-8">
-              <button
-                onClick={() => onLaunch(strategy, stats)}
-                className="px-8 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-lg tracking-wide transition-colors shadow-lg"
-                style={{ boxShadow: '0 0 24px 4px rgba(99,102,241,0.45)' }}
-              >
-                Launch Business →
-              </button>
-            </div>
+          {/* Auto-launching indicator */}
+          {isComplete && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="flex justify-center pb-8"
+            >
+              <p className="text-sm text-gray-500 animate-pulse">Launching business…</p>
+            </motion.div>
           )}
         </>
       )}
