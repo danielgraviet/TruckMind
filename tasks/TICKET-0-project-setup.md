@@ -32,11 +32,10 @@ Get the repo created, dependencies installed, environment configured, and the ex
   ```
 - [ ] Copy in the existing backend code (schema.py, all agents, llm_client.py, census.py, pipeline.py)
 - [ ] Add `__init__.py` files to all Python packages
-- [ ] Install backend dependencies:
+- [ ] Install backend dependencies using the pinned file (do **not** overwrite it with `pip freeze`):
   ```bash
   cd backend
-  pip install anthropic httpx fastapi uvicorn python-dotenv
-  pip freeze > requirements.txt
+  pip install -r requirements.txt
   ```
 - [ ] Set up `.env` with `ANTHROPIC_API_KEY` and `CENSUS_API_KEY`
 - [ ] Scaffold the frontend:

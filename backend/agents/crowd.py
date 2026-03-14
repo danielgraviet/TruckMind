@@ -19,14 +19,9 @@ from models.schema import (
     Persona, Strategy, PriceSensitivity, MealPreference,
 )
 from utils.llm_client import LLMClient
+import utils.census as census
 
 
-# ─── Census data integration ────────────────────────────────────────────────
-
-# TODO: Replace with real Census API calls.
-# For hackathon MVP, we pre-cache demographic profiles for demo locations.
-# Census API: https://api.census.gov/data/2022/acs/acs5
-# Key variables: B01001 (age/sex), B19001 (household income), B15003 (education)
 
 # TODO: where should our caching layer sit? is it overkill to do Redis? 
 CACHED_DEMOGRAPHICS = {
@@ -129,14 +124,6 @@ CACHED_DEMOGRAPHICS = {
 def get_demographics(location: str) -> dict:
     """
     Get demographic data for a location.
-    
-    TODO for hackathon: If you have time, wire up the real Census API:
-        GET https://api.census.gov/data/2022/acs/acs5
-        ?get=NAME,B01001_001E,B19013_001E
-        &for=place:*
-        &in=state:49  (Utah)
-        &key=YOUR_KEY
-    
     For now, falls back to cached data or a generic profile.
     """
     # Try exact match first
@@ -147,6 +134,11 @@ def get_demographics(location: str) -> dict:
     for key, data in CACHED_DEMOGRAPHICS.items():
         if location.lower() in key.lower() or key.lower() in location.lower():
             return data
+    
+    # TODO: fix this. This is acually making the api call, but is brittle because the api is bad. prioritize cache first. 
+    demographics = census.fetch_demographics(location_name=location)
+    if demographics:
+        return demographics
 
     # Generic fallback
     return {

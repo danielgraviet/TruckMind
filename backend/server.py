@@ -54,7 +54,7 @@ active_shop: dict = {"state": None, "client": None}
 
 # ─── Request / response models ────────────────────────────────────────────────
 
-class PipelineRequest(BaseModel): # TODO, I know in our schema.py, we are using dataclasses. is pydantic here right choice.
+class PipelineRequest(BaseModel):
     concept: str
     location: str
     budget: Optional[float] = None
