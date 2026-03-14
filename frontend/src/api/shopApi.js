@@ -1,9 +1,75 @@
+// ─────────────────────────── Normalize backend → frontend ─────────────
+
+let _normActionId = 1000
+
+function normalizeShopState(raw) {
+  if (!raw) return null
+
+  // Convert inventory array → { [name]: { quantity, maxCapacity } }
+  const inventory = {}
+  if (Array.isArray(raw.inventory)) {
+    for (const item of raw.inventory) {
+      inventory[item.menu_item_name] = {
+        quantity: item.quantity_remaining,
+        maxCapacity: item.max_capacity,
+      }
+    }
+  } else if (raw.inventory && typeof raw.inventory === 'object') {
+    // Already in frontend shape (mock mode)
+    Object.assign(inventory, raw.inventory)
+  }
+
+  // Convert active_menu from array of dicts → array of name strings
+  let activeMenu = []
+  if (Array.isArray(raw.active_menu)) {
+    activeMenu = raw.active_menu.map(item =>
+      typeof item === 'string' ? item : item.name
+    )
+  } else if (Array.isArray(raw.activeMenu)) {
+    activeMenu = raw.activeMenu
+  }
+
+  // Build currentPrices: backend current_prices only has overrides, so fill in
+  // base_price from active_menu items for any items without an override
+  const overrides = raw.current_prices ?? raw.currentPrices ?? {}
+  const currentPrices = { ...overrides }
+  if (Array.isArray(raw.active_menu)) {
+    for (const item of raw.active_menu) {
+      if (typeof item === 'object' && item.name && !(item.name in currentPrices)) {
+        currentPrices[item.name] = item.base_price
+      }
+    }
+  }
+
+  // Normalize actions: backend uses action_type (no id/timestamp)
+  const recentActions = (raw.recent_actions ?? raw.recentActions ?? []).map(a => ({
+    id: a.id ?? `action-${_normActionId++}`,
+    type: a.action_type ?? a.type,
+    description: a.description,
+    details: typeof a.details === 'string' ? a.details : JSON.stringify(a.details ?? ''),
+    timestamp: a.timestamp ?? Date.now(),
+  }))
+
+  return {
+    activeMenu,
+    inventory,
+    currentPrices,
+    recentOrders: raw.recent_orders ?? raw.recentOrders ?? [],
+    recentActions,
+    removedItems: raw.removed_items ?? raw.removedItems ?? [],
+    totalRevenue: raw.total_revenue ?? raw.totalRevenue ?? 0,
+    totalOrders: raw.total_orders ?? raw.totalOrders ?? 0,
+    cashOnHand: raw.cash_on_hand ?? raw.cashOnHand ?? 500,
+  }
+}
+
 // ─────────────────────────── Live API calls ───────────────────────────
 
 export async function fetchShopState() {
   const res = await fetch('/api/shop/state')
   if (!res.ok) throw new Error(`Shop state fetch failed: ${res.status}`)
-  return res.json()
+  const raw = await res.json()
+  return normalizeShopState(raw)
 }
 
 export async function sendOrder(message, customerName = 'Customer') {
@@ -13,13 +79,32 @@ export async function sendOrder(message, customerName = 'Customer') {
     body: JSON.stringify({ message, customer_name: customerName }),
   })
   if (!res.ok) throw new Error(`Order failed: ${res.status}`)
-  return res.json()
+  const raw = await res.json()
+
+  // Map backend field names to what the reducer expects
+  const actions = (raw.autonomous_actions ?? []).map(a => ({
+    id: a.id ?? `action-${_normActionId++}`,
+    type: a.action_type ?? a.type,
+    description: a.description,
+    details: typeof a.details === 'string' ? a.details : JSON.stringify(a.details ?? ''),
+    timestamp: a.timestamp ?? Date.now(),
+  }))
+
+  return {
+    shopState: normalizeShopState(raw.shop_state),
+    cashierReply: raw.cashier_message,
+    actions,
+  }
 }
 
 export async function triggerRush() {
   const res = await fetch('/api/shop/simulate-rush', { method: 'POST' })
   if (!res.ok) throw new Error(`Rush trigger failed: ${res.status}`)
-  return res.json()
+  const raw = await res.json()
+
+  return {
+    shopState: normalizeShopState(raw.shop_state),
+  }
 }
 
 // ─────────────────────────── Mock helpers ──────────────────────────────
