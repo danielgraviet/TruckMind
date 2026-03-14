@@ -5,7 +5,7 @@ import ReactionBoard   from '../components/pipeline/ReactionBoard.jsx'
 import SimulationStats from '../components/pipeline/SimulationStats.jsx'
 import PhaseIndicator  from '../components/shared/PhaseIndicator.jsx'
 
-export default function PipelinePage() {
+export default function PipelinePage({ onLaunch }) {
   const { state, mockMode, setMockMode, start, stop } = useSimulation()
   const { phase, strategy, personas, personaStates, stats, isRunning } = state
 
@@ -46,6 +46,19 @@ export default function PipelinePage() {
           <SimulationStats stats={stats} />
         </div>
       </div>
+
+      {/* Launch CTA — shown when simulation is complete */}
+      {phase === 'complete' && onLaunch && (
+        <div className="flex justify-center pt-4 pb-8">
+          <button
+            onClick={() => onLaunch(strategy, stats)}
+            className="relative px-8 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-lg tracking-wide transition-colors shadow-lg shadow-indigo-900/50 animate-pulse-glow"
+            style={{ boxShadow: '0 0 24px 4px rgba(99,102,241,0.45)' }}
+          >
+            Launch Business →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
