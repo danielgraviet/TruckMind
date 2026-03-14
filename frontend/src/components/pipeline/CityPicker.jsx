@@ -41,17 +41,17 @@ export default function CityPicker({ value, onChange, disabled }) {
     <div>
       <label className="block text-xs text-gray-500 mb-1.5">Location</label>
 
-      <div className={`bg-gray-800 border rounded-lg p-3 flex gap-3 transition-colors ${disabled ? 'opacity-50 pointer-events-none border-gray-700' : 'border-gray-700 hover:border-gray-600'}`}>
+      <div className={`bg-gray-800/60 border rounded-lg p-3 flex gap-4 transition-colors ${disabled ? 'opacity-50 pointer-events-none border-gray-700' : 'border-gray-700 hover:border-gray-600'}`}>
 
         {/* ── SVG Map ─────────────────────────────── */}
-        <div className="shrink-0">
+        <div className="shrink-0 flex flex-col items-center">
           <svg
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-            className="w-24 h-32"
+            className="w-28 h-36"
             style={{ overflow: 'visible' }}
           >
-            {/* State fill */}
-            <path d={UTAH_PATH} fill="#111827" stroke="#374151" strokeWidth="1.5" />
+            {/* State fill with subtle gradient feel */}
+            <path d={UTAH_PATH} fill="#1a2236" stroke="#2d3f5e" strokeWidth="1.5" />
 
             {/* City dots */}
             {CITIES.map(city => {
@@ -67,23 +67,27 @@ export default function CityPicker({ value, onChange, disabled }) {
                   onMouseLeave={() => setHovered(null)}
                   style={{ cursor: disabled ? 'default' : 'pointer' }}
                 >
-                  {/* Glow ring when active */}
-                  {isActive && (
-                    <circle cx={x} cy={y} r={7} fill="rgb(99 102 241 / 0.25)" />
+                  {/* Outer pulse ring for selected */}
+                  {isSelected && (
+                    <circle cx={x} cy={y} r={9} fill="rgb(99 102 241 / 0.15)" stroke="rgb(99 102 241 / 0.3)" strokeWidth="1" />
+                  )}
+                  {/* Hover glow */}
+                  {isActive && !isSelected && (
+                    <circle cx={x} cy={y} r={7} fill="rgb(107 114 128 / 0.2)" />
                   )}
                   <circle
                     cx={x}
                     cy={y}
-                    r={isSelected ? 4.5 : isActive ? 4 : 3}
-                    fill={isSelected ? '#818cf8' : isActive ? '#6b7280' : '#374151'}
-                    stroke={isSelected ? '#a5b4fc' : isActive ? '#6b7280' : '#4b5563'}
+                    r={isSelected ? 5 : isActive ? 4.5 : 3.5}
+                    fill={isSelected ? '#818cf8' : isActive ? '#9ca3af' : '#374151'}
+                    stroke={isSelected ? '#c7d2fe' : isActive ? '#6b7280' : '#4b5563'}
                     strokeWidth="1"
                   />
                 </g>
               )
             })}
           </svg>
-          <p className="text-gray-600 text-[10px] mt-1 text-center">Utah</p>
+          <p className="text-gray-600 text-[10px] mt-0.5">Utah</p>
         </div>
 
         {/* ── City list ───────────────────────────── */}
@@ -100,22 +104,20 @@ export default function CityPicker({ value, onChange, disabled }) {
                 onMouseEnter={() => setHovered(city.name)}
                 onMouseLeave={() => setHovered(null)}
                 className={`
-                  text-left px-2 py-0.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5
+                  text-left px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-2
                   ${isSelected
-                    ? 'text-indigo-300 bg-indigo-950/60'
+                    ? 'text-indigo-300 bg-indigo-950/70 border border-indigo-800/50'
                     : isHovered
-                    ? 'text-gray-200 bg-gray-700/60'
-                    : 'text-gray-400 hover:text-gray-300'}
+                    ? 'text-gray-200 bg-gray-700/60 border border-transparent'
+                    : 'text-gray-400 border border-transparent hover:text-gray-300'}
                 `}
               >
-                {isSelected && (
-                  <span className="w-1 h-1 rounded-full bg-indigo-400 shrink-0" />
-                )}
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${isSelected ? 'bg-indigo-400' : 'bg-gray-700'}`} />
                 {city.label}
               </button>
             )
           })}
-          <p className="text-gray-600 text-[10px] px-2 pt-1">More cities coming soon</p>
+          <p className="text-gray-600 text-[10px] px-2.5 pt-1.5">More cities coming soon</p>
         </div>
       </div>
     </div>

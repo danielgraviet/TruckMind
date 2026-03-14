@@ -6,6 +6,7 @@ import ReactionBoard   from '../components/pipeline/ReactionBoard.jsx'
 import SimulationStats from '../components/pipeline/SimulationStats.jsx'
 import PhaseIndicator  from '../components/shared/PhaseIndicator.jsx'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Users, Zap, Trophy, Settings } from 'lucide-react'
 
 const LAUNCH_DELAY = 20 // seconds to review before auto-launch
 
@@ -16,7 +17,7 @@ function EvaluatingBanner() {
       animate={{ opacity: 1, y: 0 }}
       className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center gap-3"
     >
-      <span className="text-lg animate-spin">⚙️</span>
+      <Settings className="w-4 h-4 text-gray-400 animate-spin" />
       <div>
         <div className="text-sm font-semibold text-white">Evaluating strategies…</div>
         <div className="text-xs text-gray-500 mt-0.5">Scoring all 3 by interest rate, revenue, sentiment & margin</div>
@@ -138,16 +139,57 @@ export default function PipelinePage({ onLaunch }) {
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
 
-      {/* ── Idle: concept input ── */}
+      {/* ── Idle: hero + concept input ── */}
       {isIdle && (
-        <div className="max-w-2xl mx-auto space-y-4">
-          <ConceptInput
-            onRun={start}
-            isRunning={false}
-            mockMode={mockMode}
-            onToggleMock={() => setMockMode(!mockMode)}
-            buttonLabel="Find Best Strategy"
-          />
+        <div className="max-w-2xl mx-auto space-y-6">
+          {/* Hero */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="text-center space-y-3 pt-4"
+          >
+            <h1 className="text-3xl font-bold tracking-tight text-white">
+              Know your market{' '}
+              <span className="bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent">
+                before you spend a dime
+              </span>
+            </h1>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Describe your concept. TruckMind builds your customer base from real census data,
+              tests three strategies, and picks the winner — autonomously.
+            </p>
+
+            {/* Feature pills */}
+            <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
+              {[
+                { icon: <Users className="w-3.5 h-3.5" />,   label: '100 census-grounded personas' },
+                { icon: <Zap   className="w-3.5 h-3.5" />,   label: '3 strategies tested' },
+                { icon: <Trophy className="w-3.5 h-3.5" />,  label: 'AI picks the winner' },
+              ].map(({ icon, label }) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-800/80 border border-gray-700/60 text-gray-300 text-xs"
+                >
+                  {icon}{label}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.1 }}
+          >
+            <ConceptInput
+              onRun={start}
+              isRunning={false}
+              mockMode={mockMode}
+              onToggleMock={() => setMockMode(!mockMode)}
+              buttonLabel="Find Best Strategy"
+            />
+          </motion.div>
         </div>
       )}
 
